@@ -53,6 +53,31 @@ QStatusBar { background: #0b1119; border-top: 1px solid #182334; color: #8292a8;
 QScrollArea { border: 0; }
 """
 
+SOURCE_LANGUAGES = (
+    ("自动检测", None),
+    ("英语", "en"),
+    ("日语", "ja"),
+    ("韩语", "ko"),
+    ("中文", "zh"),
+    ("俄语", "ru"),
+    ("法语", "fr"),
+    ("德语", "de"),
+    ("西班牙语", "es"),
+    ("葡萄牙语", "pt"),
+)
+
+TARGET_LANGUAGES = (
+    ("简体中文", "zh-CN"),
+    ("繁体中文", "zh-TW"),
+    ("英语", "en"),
+    ("日语", "ja"),
+    ("韩语", "ko"),
+    ("法语", "fr"),
+    ("德语", "de"),
+    ("西班牙语", "es"),
+    ("俄语", "ru"),
+)
+
 
 class SettingsWindow(QMainWindow):
     start_requested = Signal()
@@ -117,6 +142,12 @@ class SettingsWindow(QMainWindow):
 
     def _build_api_card(self) -> QFrame:
         card, layout = self._card("翻译服务", "STEP 01")
+        self.subtitle_mode = QComboBox()
+        self.subtitle_mode.addItem("双语字幕 · 原语 + 翻译", True)
+        self.subtitle_mode.addItem("仅原语字幕 · 不调用翻译 API", False)
+        self.subtitle_mode.setCurrentIndex(0 if self.config.translation.enabled else 1)
+        self.subtitle_mode.currentIndexChanged.connect(self._mode_changed)
+        layout.addWidget(self._field("字幕模式", self.subtitle_mode))
         self.api_base = QLineEdit(self.config.translation.base_url)
         self.api_base.setPlaceholderText("https://api.example.com/v1")
         layout.addWidget(self._field("OpenAI 兼容 API 地址", self.api_base))
@@ -138,7 +169,14 @@ class SettingsWindow(QMainWindow):
         if self.config.translation.model:
             self.translation_model.addItem(self.config.translation.model)
         layout.addWidget(self._field("连接成功后选择服务端提供的模型", self.translation_model))
+        self.target_language = QComboBox()
+        for label, code in TARGET_LANGUAGES:
+            self.target_language.addItem(label, code)
+        target_index = self.target_language.findData(self.config.translation.target_language)
+        self.target_language.setCurrentIndex(max(0, target_index))
+        layout.addWidget(self._field("目标语言", self.target_language))
         self.api_base.textChanged.connect(self._invalidate_api)
+        self._mode_changed()
         return card
 
     def _build_stt_card(self) -> QFrame:
@@ -161,6 +199,12 @@ class SettingsWindow(QMainWindow):
         self.profile_detail.setObjectName("hint")
         self.profile_detail.setWordWrap(True)
         layout.addWidget(self.profile_detail)
+        self.source_language = QComboBox()
+        for label, code in SOURCE_LANGUAGES:
+            self.source_language.addItem(label, code)
+        source_index = self.source_language.findData(self.config.stt.source_language)
+        self.source_language.setCurrentIndex(max(0, source_index))
+        layout.addWidget(self._field("原始语言", self.source_language))
         vram = detect_cuda_vram_gb()
         recommended = recommend_profile(vram, vram is not None)
         hardware = "未检测到 NVIDIA GPU" if vram is None else f"检测到约 {vram:.1f}GB NVIDIA 显存"
@@ -232,6 +276,7 @@ class SettingsWindow(QMainWindow):
         return container
 
     def _save_api(self) -> None:
+        self.config.translation.enabled = bool(self.subtitle_mode.currentData())
         self.config.translation.base_url = self.api_base.text().strip()
         if self.api_key.text():
             set_api_key(self.config.translation.api_key_env, self.api_key.text())
@@ -246,6 +291,24 @@ class SettingsWindow(QMainWindow):
         self.api_state.setObjectName("hint")
         self.api_state.style().polish(self.api_state)
         self.api_check_requested.emit()
+
+    def _mode_changed(self) -> None:
+        if not hasattr(self, "api_base"):
+            return
+        enabled = bool(self.subtitle_mode.currentData())
+        self.api_base.setEnabled(enabled)
+        self.api_key.setEnabled(enabled)
+        self.check_api_button.setEnabled(enabled)
+        self.target_language.setEnabled(enabled)
+        self.translation_model.setEnabled(enabled and self._api_verified)
+        if not enabled:
+            self.api_state.setText("仅输出原语字幕，不调用翻译 API")
+            self.api_state.setObjectName("success")
+        elif not self._api_verified:
+            self.api_state.setText("尚未检查")
+            self.api_state.setObjectName("hint")
+        self.api_state.style().polish(self.api_state)
+        self._refresh_start_state()
 
     def set_api_models(self, models: list[str]) -> None:
         self.translation_model.clear()
@@ -317,6 +380,8 @@ class SettingsWindow(QMainWindow):
     def _save_all(self) -> None:
         self._save_api()
         self.config.stt.profile = self.profile.currentData()
+        self.config.stt.source_language = self.source_language.currentData()
+        self.config.translation.target_language = self.target_language.currentData()
         if self.translation_model.isEnabled() and self.translation_model.currentText():
             self.config.translation.model = self.translation_model.currentText()
         self.config.overlay.opacity = self.opacity.value() / 100
@@ -367,10 +432,11 @@ class SettingsWindow(QMainWindow):
         if not hasattr(self, "start_stop"):
             return
         has_process = self.process.currentData() is not None
-        ready = self._api_verified and self._model_ready and has_process
+        translation_ready = not bool(self.subtitle_mode.currentData()) or self._api_verified
+        ready = translation_ready and self._model_ready and has_process
         self.start_stop.setEnabled(self._running or ready)
         missing = []
-        if not self._api_verified:
+        if bool(self.subtitle_mode.currentData()) and not self._api_verified:
             missing.append("检查翻译 API")
         if not self._model_ready:
             missing.append("下载本地语音模型")

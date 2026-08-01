@@ -55,8 +55,29 @@ class SubtitleOverlay(QWidget):
         painter.setPen(Qt.NoPen)
         painter.setBrush(QColor(colors.get(self.health_state, "#89909f")))
         painter.drawEllipse(self.width() - 20, 10, 8, 8)
-        self._draw_outlined(painter, self.source_text, QRectF(25, 16, self.width() - 50, 50), QColor(205, 210, 220), 18)
-        self._draw_outlined(painter, self.translated_text, QRectF(25, 70, self.width() - 50, 100), QColor(255, 255, 255), 28)
+        if self.translated_text:
+            self._draw_outlined(
+                painter,
+                self.source_text,
+                QRectF(25, 16, self.width() - 50, 50),
+                QColor(175, 190, 210),
+                18,
+            )
+            self._draw_outlined(
+                painter,
+                self.translated_text,
+                QRectF(25, 70, self.width() - 50, 100),
+                QColor(255, 255, 255),
+                28,
+            )
+        else:
+            self._draw_outlined(
+                painter,
+                self.source_text,
+                QRectF(25, 48, self.width() - 50, 110),
+                QColor(255, 255, 255),
+                28,
+            )
 
     def _draw_outlined(self, painter, text, rect, color, size) -> None:
         font = QFont("Microsoft YaHei UI", size, QFont.DemiBold)

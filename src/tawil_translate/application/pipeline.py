@@ -35,7 +35,7 @@ class TranslationPipeline:
         audio: AudioSource,
         vad: VoiceActivityDetector,
         stt: STTEngine,
-        translator: Translator,
+        translator: Translator | None,
         emit: EventHandler,
         glossary: dict[str, str] | None = None,
         budget: DailyTokenBudget | None = None,
@@ -44,11 +44,13 @@ class TranslationPipeline:
         overflow_policy: str = "drop_oldest",
         chunker: SmartChunker | None = None,
         circuit_breaker: CircuitBreaker | None = None,
+        translation_enabled: bool = True,
     ) -> None:
         self.audio = audio
         self.vad = vad
         self.stt = stt
         self.translator = translator
+        self.translation_enabled = translation_enabled
         self.emit = emit
         self.glossary = glossary or {}
         self.budget = budget or DailyTokenBudget(100_000)
@@ -116,9 +118,27 @@ class TranslationPipeline:
                 if not transcript.text.strip():
                     continue
                 utterance_id = transcript.utterance_id or uuid4().hex
+                await self.emit(
+                    SubtitleEvent(utterance_id, transcript.text, "", is_final=False)
+                )
+                if not self.translation_enabled or self.translator is None:
+                    latency_ms = round((monotonic() - started) * 1000)
+                    self.context.append(transcript.text)
+                    await self.emit(
+                        SubtitleEvent(
+                            utterance_id,
+                            transcript.text,
+                            "",
+                            is_final=True,
+                            latency_ms=latency_ms,
+                        )
+                    )
+                    await self.emit(MetricEvent("caption_latency", latency_ms, "ms"))
+                    continue
                 self.budget.reserve(self.budget.estimate(transcript.text))
                 self.circuit_breaker.before_call()
                 rendered = ""
+                assert self.translator is not None
                 async for delta in self.translator.translate(
                     transcript.text,
                     context=tuple(self.context),

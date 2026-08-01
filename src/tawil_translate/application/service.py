@@ -28,13 +28,15 @@ def build_pipeline(config: AppConfig, emit: EventHandler, root: Path | None = No
         helper_path=root / config.audio.helper_path,
         frame_ms=config.audio.frame_ms,
     )
-    translator = OpenAICompatibleTranslator(
-        base_url=config.translation.base_url,
-        model=config.translation.model,
-        api_key=get_api_key(config.translation.api_key_env),
-        target_language=config.translation.target_language,
-        timeout_seconds=config.translation.timeout_seconds,
-    )
+    translator = None
+    if config.translation.enabled:
+        translator = OpenAICompatibleTranslator(
+            base_url=config.translation.base_url,
+            model=config.translation.model,
+            api_key=get_api_key(config.translation.api_key_env),
+            target_language=config.translation.target_language,
+            timeout_seconds=config.translation.timeout_seconds,
+        )
     return TranslationPipeline(
         audio=audio,
         vad=SileroVAD(
@@ -54,4 +56,5 @@ def build_pipeline(config: AppConfig, emit: EventHandler, root: Path | None = No
             merge_gap_ms=config.pipeline.merge_gap_ms,
             max_seconds=config.pipeline.max_segment_seconds,
         ),
+        translation_enabled=config.translation.enabled,
     )

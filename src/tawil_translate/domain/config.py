@@ -36,6 +36,7 @@ class VADConfig:
 
 @dataclass(slots=True)
 class TranslationConfig:
+    enabled: bool = True
     provider: str = "openai-compatible"
     base_url: str = "https://api.openai.com/v1"
     model: str = "gpt-4.1-mini"
