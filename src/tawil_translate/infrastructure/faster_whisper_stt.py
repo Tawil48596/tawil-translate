@@ -27,7 +27,6 @@ class FasterWhisperSTT:
         self.language = language
         self._detected_language: str | None = language
         self._language_votes: deque[str] = deque(maxlen=3)
-        self._previous_text = ""
         self._model = None
         self._lock = asyncio.Lock()
 
@@ -73,15 +72,16 @@ class FasterWhisperSTT:
     def _transcribe_sync(self, segment: SpeechSegment) -> Transcript:
         audio = _pcm16_wav(segment.audio, segment.sample_rate)
         # A small beam is the best latency/quality tradeoff for live captions.
-        beam_size = 2 if self.profile.id == "balanced" else 1
+        beam_size = 3 if self.profile.id == "balanced" else 1
         segments, info = self._model.transcribe(
             audio,
             language=self._detected_language,
             beam_size=beam_size,
             patience=1.0,
-            initial_prompt=self._previous_text[-240:] or None,
+            initial_prompt=None,
             condition_on_previous_text=False,
             vad_filter=False,
+            without_timestamps=True,
             temperature=0.0,
             repetition_penalty=1.05,
             no_repeat_ngram_size=3,
@@ -96,15 +96,12 @@ class FasterWhisperSTT:
             # unanimous window can also recover after the programme changes.
             if count >= 3:
                 self._detected_language = winner
-        if text:
-            self._previous_text = text
         return Transcript(uuid4().hex, text, detected, committed=True)
 
     async def close(self) -> None:
         self._model = None
         self._detected_language = self.language
         self._language_votes.clear()
-        self._previous_text = ""
 
 
 def _pcm16_wav(pcm: bytes, sample_rate: int) -> io.BytesIO:
