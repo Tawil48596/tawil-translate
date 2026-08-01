@@ -23,6 +23,7 @@ desktop = [
   "onnxruntime>=1.20",
   "keyring>=25.0",
   "pyinstaller>=6.10",
+  "pycaw>=20251023",
 ]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "ruff>=0.6"]
 

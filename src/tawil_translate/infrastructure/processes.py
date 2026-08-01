@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import csv
-import io
-import subprocess
 from dataclasses import dataclass
 
 
@@ -19,23 +16,31 @@ class ProcessInfo:
 
 
 def list_processes() -> list[ProcessInfo]:
-    """List interactive Windows processes without requiring psutil."""
-    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    result = subprocess.run(
-        ["tasklist", "/FO", "CSV", "/NH", "/V"],
-        check=True,
-        capture_output=True,
-        text=True,
-        encoding="mbcs",
-        errors="replace",
-        creationflags=flags,
-    )
-    processes: list[ProcessInfo] = []
-    for row in csv.reader(io.StringIO(result.stdout)):
-        if len(row) < 9 or not row[1].isdigit():
+    """Return only processes with an active Windows render-audio session."""
+    try:
+        from pycaw.constants import AudioSessionState
+        from pycaw.pycaw import AudioUtilities
+    except ImportError as exc:
+        raise RuntimeError("pycaw is required to discover audio processes") from exc
+
+    active_state = AudioSessionState.Active.value
+    return _active_processes(AudioUtilities.GetAllSessions(), active_state)
+
+
+def _active_processes(sessions, active_state: int = 1) -> list[ProcessInfo]:
+    processes: dict[int, ProcessInfo] = {}
+    for session in sessions:
+        try:
+            if session.State != active_state or not session.ProcessId:
+                continue
+            process = session.Process
+            if process is None:
+                continue
+            processes[session.ProcessId] = ProcessInfo(session.ProcessId, process.name())
+        except (OSError, RuntimeError):
+            # A process may exit between session enumeration and name lookup.
             continue
-        processes.append(ProcessInfo(int(row[1]), row[0], row[8]))
-    return sorted(processes, key=lambda item: (item.name.casefold(), item.pid))
+    return sorted(processes.values(), key=lambda item: (item.name.casefold(), item.pid))
 
 
 def find_remembered_process(processes: list[ProcessInfo], pid: int | None, name: str | None) -> int:

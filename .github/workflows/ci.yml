@@ -41,7 +41,7 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: python -m pip install -e . PySide6 keyring
+      - run: python -m pip install -e . PySide6 keyring pycaw
       - run: python scripts/ui_smoke.py
         env:
           QT_QPA_PLATFORM: offscreen

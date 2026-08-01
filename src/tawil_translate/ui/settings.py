@@ -184,7 +184,10 @@ class SettingsWindow(QMainWindow):
         refresh.clicked.connect(self._refresh_processes)
         process_row.addWidget(self.process, 1)
         process_row.addWidget(refresh)
-        layout.addWidget(self._field("目标游戏 / 直播进程", process_row))
+        layout.addWidget(self._field("当前有声音的游戏 / 直播进程", process_row))
+        self.process_state = QLabel("只显示具有活跃 Windows 音频会话的进程")
+        self.process_state.setObjectName("hint")
+        layout.addWidget(self.process_state)
         display_row = QHBoxLayout()
         self.opacity = QSlider(Qt.Horizontal)
         self.opacity.setRange(30, 100)
@@ -340,6 +343,13 @@ class SettingsWindow(QMainWindow):
             self.process.addItem(process.label, process)
             if process.pid == remembered:
                 self.process.setCurrentIndex(self.process.count() - 1)
+        self.process_state.setText(
+            f"发现 {len(processes)} 个有声音的进程"
+            if processes
+            else "暂未发现有声音的进程 · 请先让游戏或直播播放声音，再点击刷新"
+        )
+        self.process_state.setObjectName("success" if processes else "hint")
+        self.process_state.style().polish(self.process_state)
         self._refresh_start_state()
 
     def _toggle_running(self) -> None:
@@ -352,15 +362,16 @@ class SettingsWindow(QMainWindow):
     def _refresh_start_state(self) -> None:
         if not hasattr(self, "start_stop"):
             return
-        ready = self._api_verified and self._model_ready and self.process.count() > 0
+        has_process = self.process.currentData() is not None
+        ready = self._api_verified and self._model_ready and has_process
         self.start_stop.setEnabled(self._running or ready)
         missing = []
         if not self._api_verified:
             missing.append("检查翻译 API")
         if not self._model_ready:
             missing.append("下载本地语音模型")
-        if self.process.count() == 0:
-            missing.append("选择目标进程")
+        if not has_process:
+            missing.append("播放声音后刷新并选择目标进程")
         self.start_hint.setText("准备就绪" if not missing else "开始前需要：" + "、".join(missing))
 
     def set_running(self, running: bool) -> None:
