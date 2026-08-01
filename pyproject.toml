@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tawil-translate"
+version = "0.1.0"
+description = "Low-latency process-level game and livestream translation overlay"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Tawil" }]
+dependencies = []
+
+[project.optional-dependencies]
+desktop = [
+  "PySide6>=6.7",
+  "pyaudiowpatch>=0.2.12.7",
+  "faster-whisper>=1.0",
+  "httpx>=0.27",
+]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "ruff>=0.6"]
+
+[project.scripts]
+tawil-translate = "tawil_translate.bootstrap:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tawil_translate"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+

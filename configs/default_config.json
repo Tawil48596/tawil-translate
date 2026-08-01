@@ -1,0 +1,14 @@
+{
+  "audio": {"target_pid": null, "sample_rate": 16000},
+  "stt": {"provider": "faster-whisper", "model": "small", "device": "cuda"},
+  "translation": {
+    "provider": "openai-compatible",
+    "base_url": "https://api.openai.com/v1",
+    "model": "gpt-4.1-mini",
+    "api_key_env": "TAWIL_API_KEY",
+    "daily_token_limit": 100000
+  },
+  "overlay": {"opacity": 0.86, "click_through": true, "hotkey": "Ctrl+Shift+T"},
+  "pipeline": {"queue_size": 8, "context_size": 6}
+}
+
