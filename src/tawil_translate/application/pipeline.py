@@ -63,8 +63,10 @@ class TranslationPipeline:
         self.circuit_breaker = circuit_breaker or CircuitBreaker()
 
     async def run(self) -> None:
-        await self.emit(HealthEvent("stt", HealthState.WORKING, "warming up model"))
-        await asyncio.gather(self.stt.warmup(), self.vad.warmup())
+        await self.emit(HealthEvent("vad", HealthState.WORKING, "正在加载语音活动检测…"))
+        await asyncio.wait_for(self.vad.warmup(), timeout=60)
+        await self.emit(HealthEvent("stt", HealthState.WORKING, "正在加载本地语音模型…"))
+        await asyncio.wait_for(self.stt.warmup(), timeout=240)
         await self.emit(HealthEvent("stt", HealthState.IDLE, "model ready"))
         capture = asyncio.create_task(self._capture(), name="audio-capture")
         recognize = asyncio.create_task(self._recognize(), name="stt-translate")
