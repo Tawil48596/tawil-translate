@@ -6,6 +6,10 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+DEFAULT_TRANSLATION_PROMPT = """你是专业的游戏与直播实时字幕翻译器。请将输入内容翻译为{target_language}。
+要求：只输出译文，不解释、不添加前缀；保持人物语气、情绪、数字和格式；结合最近上下文消解指代；专有名词严格遵循词库；听写不完整时优先给出自然、简洁且适合字幕阅读的译文。
+词库约束：{glossary}"""
+
 
 @dataclass(slots=True)
 class AudioConfig:
@@ -24,6 +28,7 @@ class STTConfig:
     compute_type: str = "auto"
     source_language: str | None = None
     model_dir: str = "models"
+    download_source: str = "auto"
 
 
 @dataclass(slots=True)
@@ -44,6 +49,7 @@ class TranslationConfig:
     target_language: str = "zh-CN"
     daily_token_limit: int = 100_000
     timeout_seconds: float = 12.0
+    custom_prompt: str = DEFAULT_TRANSLATION_PROMPT
 
 
 @dataclass(slots=True)

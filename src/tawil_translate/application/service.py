@@ -35,6 +35,7 @@ def build_pipeline(config: AppConfig, emit: EventHandler, root: Path | None = No
             model=config.translation.model,
             api_key=get_api_key(config.translation.api_key_env),
             target_language=config.translation.target_language,
+            custom_prompt=config.translation.custom_prompt,
             timeout_seconds=config.translation.timeout_seconds,
         )
     return TranslationPipeline(

@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QPlainTextEdit,
     QProgressBar,
     QPushButton,
     QScrollArea,
@@ -21,7 +22,7 @@ from PySide6.QtWidgets import (
 
 from tawil_translate.application.model_catalog import PROFILES, recommend_profile
 from tawil_translate.application.model_manager import LocalModelManager
-from tawil_translate.domain.config import AppConfig
+from tawil_translate.domain.config import DEFAULT_TRANSLATION_PROMPT, AppConfig
 from tawil_translate.infrastructure.hardware import detect_cuda_vram_gb
 from tawil_translate.infrastructure.processes import find_remembered_process, list_processes
 from tawil_translate.infrastructure.secrets import get_api_key, set_api_key
@@ -37,8 +38,8 @@ QLabel#section { color: #edf4ff; font-size: 15px; font-weight: 650; }
 QLabel#hint { color: #8292a8; font-size: 12px; }
 QLabel#success { color: #48d597; }
 QLabel#error { color: #ff6978; }
-QLineEdit, QComboBox { background: #0b111a; border: 1px solid #26364a; border-radius: 8px; padding: 9px 11px; min-height: 20px; }
-QLineEdit:focus, QComboBox:focus { border: 1px solid #45a3ff; }
+QLineEdit, QComboBox, QPlainTextEdit { background: #0b111a; border: 1px solid #26364a; border-radius: 8px; padding: 9px 11px; min-height: 20px; }
+QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus { border: 1px solid #45a3ff; }
 QComboBox::drop-down { border: 0; width: 28px; }
 QPushButton { background: #172334; border: 1px solid #29405a; border-radius: 8px; padding: 9px 15px; color: #dce8f8; }
 QPushButton:hover { background: #20334b; border-color: #3e6d98; }
@@ -175,6 +176,20 @@ class SettingsWindow(QMainWindow):
         target_index = self.target_language.findData(self.config.translation.target_language)
         self.target_language.setCurrentIndex(max(0, target_index))
         layout.addWidget(self._field("目标语言", self.target_language))
+        prompt_row = QHBoxLayout()
+        prompt_label = QLabel("自定义翻译提示词 · 支持 {target_language} 与 {glossary}")
+        prompt_label.setObjectName("hint")
+        reset_prompt = QPushButton("恢复预设")
+        reset_prompt.clicked.connect(
+            lambda: self.translation_prompt.setPlainText(DEFAULT_TRANSLATION_PROMPT)
+        )
+        prompt_row.addWidget(prompt_label, 1)
+        prompt_row.addWidget(reset_prompt)
+        layout.addLayout(prompt_row)
+        self.translation_prompt = QPlainTextEdit(self.config.translation.custom_prompt)
+        self.translation_prompt.setMinimumHeight(115)
+        self.translation_prompt.setPlaceholderText(DEFAULT_TRANSLATION_PROMPT)
+        layout.addWidget(self.translation_prompt)
         self.api_base.textChanged.connect(self._invalidate_api)
         self._mode_changed()
         return card
@@ -189,9 +204,7 @@ class SettingsWindow(QMainWindow):
         self.profile.setCurrentIndex(max(0, self.profile.findData(self.config.stt.profile)))
         self.profile.currentIndexChanged.connect(self._update_profile)
         self.download_button = QPushButton("下载所选模型")
-        self.download_button.clicked.connect(
-            lambda: self.model_download_requested.emit(self.profile.currentData())
-        )
+        self.download_button.clicked.connect(self._request_model_download)
         row.addWidget(self.profile, 1)
         row.addWidget(self.download_button)
         layout.addLayout(row)
@@ -205,6 +218,13 @@ class SettingsWindow(QMainWindow):
         source_index = self.source_language.findData(self.config.stt.source_language)
         self.source_language.setCurrentIndex(max(0, source_index))
         layout.addWidget(self._field("原始语言", self.source_language))
+        self.download_source = QComboBox()
+        self.download_source.addItem("自动选择 · 大陆镜像失败后回退官方", "auto")
+        self.download_source.addItem("大陆加速镜像 · hf-mirror.com", "mirror")
+        self.download_source.addItem("Hugging Face 官方 · huggingface.co", "official")
+        source_index = self.download_source.findData(self.config.stt.download_source)
+        self.download_source.setCurrentIndex(max(0, source_index))
+        layout.addWidget(self._field("模型下载渠道", self.download_source))
         vram = detect_cuda_vram_gb()
         recommended = recommend_profile(vram, vram is not None)
         hardware = "未检测到 NVIDIA GPU" if vram is None else f"检测到约 {vram:.1f}GB NVIDIA 显存"
@@ -212,7 +232,7 @@ class SettingsWindow(QMainWindow):
         recommendation.setObjectName("hint")
         layout.addWidget(recommendation)
         self.model_progress = QProgressBar()
-        self.model_progress.setRange(0, 0)
+        self.model_progress.setRange(0, 100)
         self.model_progress.hide()
         layout.addWidget(self.model_progress)
         self.model_state = QLabel()
@@ -278,11 +298,21 @@ class SettingsWindow(QMainWindow):
     def _save_api(self) -> None:
         self.config.translation.enabled = bool(self.subtitle_mode.currentData())
         self.config.translation.base_url = self.api_base.text().strip()
+        self.config.translation.target_language = self.target_language.currentData()
+        self.config.translation.custom_prompt = (
+            self.translation_prompt.toPlainText().strip() or DEFAULT_TRANSLATION_PROMPT
+        )
         if self.api_key.text():
             set_api_key(self.config.translation.api_key_env, self.api_key.text())
             self.api_key.clear()
             self.api_key.setPlaceholderText("已安全保存密钥")
         self.config.save(self.config_path)
+
+    def _request_model_download(self) -> None:
+        self.config.stt.profile = self.profile.currentData()
+        self.config.stt.download_source = self.download_source.currentData()
+        self.config.save(self.config_path)
+        self.model_download_requested.emit(self.profile.currentData())
 
     def _save_and_check_api(self) -> None:
         self._save_api()
@@ -364,7 +394,25 @@ class SettingsWindow(QMainWindow):
         self.download_button.setEnabled(not downloading)
         self.profile.setEnabled(not downloading)
         if downloading:
-            self.model_state.setText("正在下载模型文件，请勿关闭程序…")
+            self.model_progress.setValue(0)
+            self.model_state.setText("正在连接模型下载渠道…")
+
+    def set_model_progress(
+        self, percent: int, downloaded: int, total: int, speed: float, source: str
+    ) -> None:
+        self.model_progress.setVisible(True)
+        self.download_button.setEnabled(False)
+        self.profile.setEnabled(False)
+        self.model_progress.setValue(percent)
+        downloaded_mb = downloaded / 1024**2
+        total_mb = total / 1024**2
+        speed_mb = speed / 1024**2
+        remaining = max(total - downloaded, 0) / speed if speed > 0 else 0
+        eta = f" · 预计剩余 {remaining:.0f} 秒" if remaining else ""
+        self.model_state.setText(
+            f"{source} · {percent}% · {downloaded_mb:.1f}/{total_mb:.1f} MB · "
+            f"{speed_mb:.2f} MB/s{eta}"
+        )
 
     def set_model_downloaded(self, profile_id: str) -> None:
         self.set_model_downloading(False)
@@ -381,7 +429,11 @@ class SettingsWindow(QMainWindow):
         self._save_api()
         self.config.stt.profile = self.profile.currentData()
         self.config.stt.source_language = self.source_language.currentData()
+        self.config.stt.download_source = self.download_source.currentData()
         self.config.translation.target_language = self.target_language.currentData()
+        self.config.translation.custom_prompt = (
+            self.translation_prompt.toPlainText().strip() or DEFAULT_TRANSLATION_PROMPT
+        )
         if self.translation_model.isEnabled() and self.translation_model.currentText():
             self.config.translation.model = self.translation_model.currentText()
         self.config.overlay.opacity = self.opacity.value() / 100

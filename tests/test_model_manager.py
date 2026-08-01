@@ -1,5 +1,5 @@
 from tawil_translate.application.model_catalog import get_profile
-from tawil_translate.application.model_manager import LocalModelManager
+from tawil_translate.application.model_manager import DownloadProgress, LocalModelManager
 from tawil_translate.paths import model_root
 
 
@@ -18,3 +18,8 @@ def test_model_is_ready_only_with_required_files(tmp_path) -> None:
 def test_relative_model_root_is_anchored_to_working_directory(monkeypatch, tmp_path) -> None:
     monkeypatch.chdir(tmp_path)
     assert model_root("models") == tmp_path / "models"
+
+
+def test_download_progress_caps_estimated_progress_until_complete() -> None:
+    assert DownloadProgress(750, 1000, 125.0, "test").percent == 75
+    assert DownloadProgress(1200, 1000, 0, "test").percent == 99

@@ -22,6 +22,7 @@ class DesktopController(QObject):
     api_check_failed = Signal(str)
     model_download_finished = Signal(str)
     model_download_failed = Signal(str)
+    model_download_progress = Signal(int, int, int, float, str)
 
     def __init__(self, config_path: Path, overlay) -> None:
         super().__init__()
@@ -70,7 +71,17 @@ class DesktopController(QObject):
             config = AppConfig.load(self.config_path)
             profile = get_profile(profile_id)
             self.status_changed.emit("working", f"正在下载 {profile.label} 模型")
-            await LocalModelManager(model_root(config.stt.model_dir)).download(profile)
+            await LocalModelManager(model_root(config.stt.model_dir)).download(
+                profile,
+                source=config.stt.download_source,
+                progress=lambda item: self.model_download_progress.emit(
+                    item.percent,
+                    item.downloaded_bytes,
+                    item.total_bytes,
+                    item.bytes_per_second,
+                    item.source_label,
+                ),
+            )
             self.model_download_finished.emit(profile_id)
             self.status_changed.emit("idle", "本地语音模型已就绪")
         except Exception as exc:  # noqa: BLE001 - shown as an inline UI error

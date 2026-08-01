@@ -12,6 +12,7 @@ class OpenAICompatibleTranslator:
         model: str,
         api_key: str,
         target_language: str,
+        custom_prompt: str,
         timeout_seconds: float = 12.0,
     ) -> None:
         if not api_key:
@@ -20,6 +21,7 @@ class OpenAICompatibleTranslator:
         self.model = model
         self.api_key = api_key
         self.target_language = target_language
+        self.custom_prompt = custom_prompt
         self.timeout_seconds = timeout_seconds
 
     async def translate(
@@ -31,12 +33,9 @@ class OpenAICompatibleTranslator:
             raise RuntimeError('install desktop dependencies: pip install -e ".[desktop]"') from exc
         glossary_text = ", ".join(f"{source}={target}" for source, target in glossary.items())
         recent = "\n".join(context[-4:])
-        system = (
-            f"Translate game/live speech into {self.target_language}. Output translation only. "
-            "Preserve tone, names and numbers; do not explain."
+        system = self.custom_prompt.replace("{target_language}", self.target_language).replace(
+            "{glossary}", glossary_text or "无"
         )
-        if glossary_text:
-            system += f" Required terminology: {glossary_text}"
         user = f"Recent context:\n{recent}\n\nCurrent utterance:\n{text}" if recent else text
         payload = {
             "model": self.model,

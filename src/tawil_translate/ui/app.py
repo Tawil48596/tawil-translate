@@ -30,6 +30,7 @@ def run_desktop(config_path: Path) -> int:
     controller.api_check_failed.connect(settings.set_api_error)
     controller.model_download_finished.connect(settings.set_model_downloaded)
     controller.model_download_failed.connect(settings.set_model_error)
+    controller.model_download_progress.connect(settings.set_model_progress)
     hotkey = GlobalHotkey()
     app.installNativeEventFilter(hotkey)
     hotkey.activated.connect(lambda: overlay.set_edit_mode(not overlay.edit_mode))
