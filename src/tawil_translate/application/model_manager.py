@@ -21,6 +21,15 @@ MODEL_REPOSITORIES = {
     "large-v3-turbo": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
 }
 
+MODEL_FILES = (
+    ("config.json", True),
+    ("model.bin", True),
+    ("tokenizer.json", True),
+    ("vocabulary.txt", False),
+    ("vocabulary.json", False),
+    ("preprocessor_config.json", False),
+)
+
 
 @dataclass(frozen=True, slots=True)
 class DownloadProgress:
@@ -103,12 +112,46 @@ class LocalModelManager:
     @staticmethod
     def _download_sync(profile: STTProfile, destination: Path, endpoint: str) -> None:
         try:
-            from huggingface_hub import snapshot_download
+            import httpx
         except ImportError as exc:
-            raise RuntimeError("Faster-Whisper is not installed") from exc
+            raise RuntimeError("HTTP download support is not installed") from exc
         repository = MODEL_REPOSITORIES.get(profile.model, profile.model)
-        snapshot_download(
-            repo_id=repository,
-            local_dir=str(destination),
-            endpoint=endpoint,
-        )
+        timeout = httpx.Timeout(connect=15.0, read=60.0, write=60.0, pool=15.0)
+        headers = {"User-Agent": "TawilTranslate/0.1 model-downloader"}
+        with httpx.Client(follow_redirects=True, timeout=timeout, headers=headers) as client:
+            for filename, required in MODEL_FILES:
+                for attempt in range(3):
+                    try:
+                        LocalModelManager._download_file(
+                            client, endpoint, repository, filename, destination
+                        )
+                        break
+                    except httpx.HTTPStatusError as exc:
+                        if not required and exc.response.status_code == 404:
+                            break
+                        if attempt == 2 or exc.response.status_code < 500:
+                            raise
+                    except httpx.TransportError:
+                        if attempt == 2:
+                            raise
+
+    @staticmethod
+    def _download_file(client, endpoint: str, repository: str, filename: str, destination: Path) -> None:
+        target = destination / filename
+        if target.is_file() and target.stat().st_size:
+            return
+        partial = destination / f"{filename}.part"
+        resumed = partial.stat().st_size if partial.exists() else 0
+        headers = {"Range": f"bytes={resumed}-"} if resumed else {}
+        url = f"{endpoint}/{repository}/resolve/main/{filename}"
+        with client.stream("GET", url, headers=headers) as response:
+            if response.status_code == 416 and partial.exists():
+                partial.replace(target)
+                return
+            response.raise_for_status()
+            append = resumed > 0 and response.status_code == 206
+            mode = "ab" if append else "wb"
+            with partial.open(mode) as output:
+                for chunk in response.iter_bytes(1024 * 256):
+                    output.write(chunk)
+        partial.replace(target)
