@@ -38,12 +38,24 @@ class FasterWhisperSTT:
         model_path = manager.path_for(self.profile)
         if not manager.is_downloaded(self.profile):
             raise RuntimeError("selected STT model is not downloaded; download it in Settings first")
-        self._model = WhisperModel(
-            str(model_path),
-            device=self.profile.device,
-            compute_type=self.profile.compute_type,
-            local_files_only=True,
-        )
+        try:
+            self._model = WhisperModel(
+                str(model_path),
+                device=self.profile.device,
+                compute_type=self.profile.compute_type,
+                local_files_only=True,
+            )
+        except Exception:
+            if self.profile.device != "cuda":
+                raise
+            # Portable builds cannot assume that CUDA and cuDNN runtime DLLs
+            # are installed system-wide. Keep captions functional on CPU.
+            self._model = WhisperModel(
+                str(model_path),
+                device="cpu",
+                compute_type="int8",
+                local_files_only=True,
+            )
 
     async def transcribe(self, segment: SpeechSegment) -> Transcript:
         await self.warmup()

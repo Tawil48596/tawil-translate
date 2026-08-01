@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import traceback
 from contextlib import suppress
 from pathlib import Path
 
@@ -112,6 +113,7 @@ class DesktopController(QObject):
             self.status_changed.emit("idle", "已停止")
             raise
         except Exception as exc:  # noqa: BLE001 - user-facing task boundary
+            self._write_diagnostic("pipeline startup/runtime failure", exc)
             self.status_changed.emit("error", str(exc))
         finally:
             self.running_changed.emit(False)
@@ -126,3 +128,10 @@ class DesktopController(QObject):
             self.status_changed.emit(event.state.value, event.detail or event.component)
         elif isinstance(event, MetricEvent):
             self.status_changed.emit("listening", f"{event.value:.0f} {event.unit}")
+
+    def _write_diagnostic(self, context: str, error: Exception) -> None:
+        log_path = self.config_path.parent / "app.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", encoding="utf-8") as output:
+            output.write(f"\n[{context}] {error}\n")
+            output.write("".join(traceback.format_exception(error)))

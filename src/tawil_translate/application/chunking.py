@@ -16,12 +16,16 @@ class SmartChunker:
 
     def push(self, segment: SpeechSegment) -> list[SpeechSegment]:
         if not self._pending:
+            if self._duration(segment) >= self.min_seconds:
+                return [segment]
             self._pending.append(segment)
             return self._drain_if_long()
         previous = self._pending[-1]
         gap_ms = max(0.0, segment.started_at - previous.ended_at) * 1000
         if gap_ms <= self.merge_gap_ms:
             self._pending.append(segment)
+            if self._pending_duration() >= self.min_seconds:
+                return self.flush()
             return self._drain_if_long()
         output = self.flush()
         self._pending.append(segment)
@@ -35,8 +39,16 @@ class SmartChunker:
         return [result]
 
     def _drain_if_long(self) -> list[SpeechSegment]:
-        duration = self._pending[-1].ended_at - self._pending[0].started_at
-        return self.flush() if duration >= self.max_seconds else []
+        return self.flush() if self._pending_duration() >= self.max_seconds else []
+
+    def _pending_duration(self) -> float:
+        if not self._pending:
+            return 0.0
+        return self._pending[-1].ended_at - self._pending[0].started_at
+
+    @staticmethod
+    def _duration(segment: SpeechSegment) -> float:
+        return max(segment.ended_at - segment.started_at, len(segment.audio) / 2 / segment.sample_rate)
 
     @staticmethod
     def _merge(segments: list[SpeechSegment]) -> SpeechSegment:

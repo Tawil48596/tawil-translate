@@ -9,9 +9,14 @@ def _segment(text: bytes, start: float, end: float) -> SpeechSegment:
 def test_short_adjacent_segments_are_merged() -> None:
     chunker = SmartChunker(merge_gap_ms=260)
     assert chunker.push(_segment(b"a", 0.0, 0.3)) == []
-    assert chunker.push(_segment(b"b", 0.4, 0.7)) == []
-    output = chunker.flush()
+    output = chunker.push(_segment(b"b", 0.4, 0.7))
     assert output[0].audio == b"ab"
+
+
+def test_complete_segment_is_committed_without_waiting_for_another_utterance() -> None:
+    chunker = SmartChunker()
+    output = chunker.push(_segment(b"caption", 0.0, 0.8))
+    assert output[0].audio == b"caption"
 
 
 def test_gap_commits_previous_utterance() -> None:
