@@ -16,6 +16,9 @@ class EnergyVAD:
     _frames: list[AudioFrame] = field(default_factory=list)
     _silent_ms: int = 0
 
+    async def warmup(self) -> None:
+        return None
+
     async def feed(self, frame: AudioFrame) -> list[SpeechSegment]:
         duration_ms = max(1, round(len(frame.pcm) / 2 / frame.sample_rate * 1000))
         samples = memoryview(frame.pcm).cast("h")

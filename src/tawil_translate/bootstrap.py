@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import sys
 from pathlib import Path
 
 from tawil_translate.application.model_catalog import PROFILES
@@ -9,6 +10,7 @@ from tawil_translate.application.pipeline import TranslationPipeline
 from tawil_translate.domain.config import AppConfig
 from tawil_translate.domain.models import HealthEvent, SubtitleEvent
 from tawil_translate.infrastructure.demo import DemoAudioSource, DemoSTT, DemoTranslator, DemoVAD
+from tawil_translate.paths import default_user_config
 
 
 async def _print_event(event: object) -> None:
@@ -38,7 +40,7 @@ def main() -> None:
     parser.add_argument("--desktop", action="store_true", help="open the unified desktop settings and overlay")
     parser.add_argument("--list-models", action="store_true", help="show local STT options")
     parser.add_argument("--profile", choices=[profile.id for profile in PROFILES])
-    parser.add_argument("--config", type=Path, default=Path("configs/user_config.json"))
+    parser.add_argument("--config", type=Path, default=default_user_config())
     args = parser.parse_args()
     if args.list_models:
         print("ID        VRAM     Model             Best for")
@@ -51,7 +53,7 @@ def main() -> None:
         config.stt.profile = args.profile
         config.save(args.config)
         print(f"Saved STT profile: {args.profile}")
-    if args.desktop:
+    if args.desktop or (not args.demo and not args.list_models and getattr(sys, "frozen", False)):
         try:
             from tawil_translate.ui.app import run_desktop
         except ImportError as exc:

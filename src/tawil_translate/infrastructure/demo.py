@@ -16,6 +16,9 @@ class DemoAudioSource:
 
 
 class DemoVAD:
+    async def warmup(self) -> None:
+        return None
+
     async def feed(self, frame: AudioFrame) -> list[SpeechSegment]:
         return [SpeechSegment(frame.pcm, frame.sample_rate, frame.captured_at, frame.captured_at)]
 

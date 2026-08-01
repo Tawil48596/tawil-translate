@@ -40,7 +40,7 @@ class DesktopController(QObject):
     async def _run(self) -> None:
         try:
             config = AppConfig.load(self.config_path)
-            pipeline = build_pipeline(config, self.emit, Path.cwd())
+            pipeline = build_pipeline(config, self.emit)
             await pipeline.run()
         except asyncio.CancelledError:
             self.status_changed.emit("idle", "已停止")
@@ -56,6 +56,7 @@ class DesktopController(QObject):
             if event.is_final:
                 self.status_changed.emit("listening", f"延迟 {event.latency_ms} ms")
         elif isinstance(event, HealthEvent):
+            self.overlay.set_health(event.state.value)
             self.status_changed.emit(event.state.value, event.detail or event.component)
         elif isinstance(event, MetricEvent):
             self.status_changed.emit("listening", f"{event.value:.0f} {event.unit}")

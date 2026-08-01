@@ -62,7 +62,7 @@ class TranslationPipeline:
 
     async def run(self) -> None:
         await self.emit(HealthEvent("stt", HealthState.WORKING, "warming up model"))
-        await self.stt.warmup()
+        await asyncio.gather(self.stt.warmup(), self.vad.warmup())
         await self.emit(HealthEvent("stt", HealthState.IDLE, "model ready"))
         capture = asyncio.create_task(self._capture(), name="audio-capture")
         recognize = asyncio.create_task(self._recognize(), name="stt-translate")

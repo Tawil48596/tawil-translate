@@ -9,16 +9,20 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMainWindow,
+    QProgressBar,
     QPushButton,
     QSlider,
     QVBoxLayout,
     QWidget,
 )
 
-from tawil_translate.application.model_catalog import PROFILES
+from tawil_translate.application.model_catalog import PROFILES, recommend_profile
 from tawil_translate.domain.config import AppConfig
+from tawil_translate.infrastructure.hardware import detect_cuda_vram_gb
 from tawil_translate.infrastructure.processes import find_remembered_process, list_processes
+from tawil_translate.infrastructure.secrets import set_api_key
 
 
 class SettingsWindow(QMainWindow):
@@ -37,6 +41,11 @@ class SettingsWindow(QMainWindow):
         root = QWidget()
         layout = QVBoxLayout(root)
         layout.addWidget(QLabel("实时游戏 / 直播翻译悬浮窗"))
+        self.model_progress = QProgressBar()
+        self.model_progress.setRange(0, 0)
+        self.model_progress.setFormat("正在检查、下载或预热本地模型…")
+        self.model_progress.hide()
+        layout.addWidget(self.model_progress)
         form = QFormLayout()
         self.profile = QComboBox()
         for item in PROFILES:
@@ -48,6 +57,26 @@ class SettingsWindow(QMainWindow):
         self.profile_detail = QLabel()
         self.profile.currentIndexChanged.connect(self._update_detail)
         form.addRow("适用场景", self.profile_detail)
+        vram = detect_cuda_vram_gb()
+        recommended = recommend_profile(vram, vram is not None)
+        hardware = "未检测到 NVIDIA GPU" if vram is None else f"检测到约 {vram:.1f}GB 显存"
+        self.recommendation = QLabel(f"{hardware}；推荐：{recommended.label}")
+        apply_recommended = QPushButton("应用推荐")
+        apply_recommended.clicked.connect(
+            lambda: self.profile.setCurrentIndex(self.profile.findData(recommended.id))
+        )
+        recommendation_row = QHBoxLayout()
+        recommendation_row.addWidget(self.recommendation, 1)
+        recommendation_row.addWidget(apply_recommended)
+        form.addRow("硬件建议", recommendation_row)
+        self.api_base = QLineEdit(self.config.translation.base_url)
+        form.addRow("翻译 API 地址", self.api_base)
+        self.translation_model = QLineEdit(self.config.translation.model)
+        form.addRow("翻译模型", self.translation_model)
+        self.api_key = QLineEdit()
+        self.api_key.setEchoMode(QLineEdit.Password)
+        self.api_key.setPlaceholderText("留空则沿用 Windows 凭据中已保存的密钥")
+        form.addRow("API Key", self.api_key)
         process_row = QHBoxLayout()
         self.process = QComboBox()
         refresh = QPushButton("刷新")
@@ -90,6 +119,11 @@ class SettingsWindow(QMainWindow):
         self.config.stt.profile = self.profile.currentData()
         self.config.overlay.opacity = self.opacity.value() / 100
         self.config.overlay.click_through = self.click_through.isChecked()
+        self.config.translation.base_url = self.api_base.text().strip()
+        self.config.translation.model = self.translation_model.text().strip()
+        if self.api_key.text():
+            set_api_key(self.config.translation.api_key_env, self.api_key.text())
+            self.api_key.clear()
         selected = self.process.currentData()
         if selected:
             self.config.audio.target_pid = selected.pid
@@ -133,3 +167,5 @@ class SettingsWindow(QMainWindow):
         color = colors.get(state, "#89909f")
         self.statusBar().setStyleSheet(f"color: {color}")
         self.statusBar().showMessage(detail or state)
+        downloading = state == "working" and "warming" in detail.casefold()
+        self.model_progress.setVisible(downloading)

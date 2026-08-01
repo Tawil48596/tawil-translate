@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  python:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e ".[dev]"
+      - run: pytest -q
+      - run: ruff check .
+
+  native:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S native/audio_capture -B native/audio_capture/build -A x64
+      - run: cmake --build native/audio_capture/build --config Release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tawil-audio-capture-windows-x64
+          path: native/audio_capture/build/Release/tawil-audio-capture.exe
+
+  package:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [python, native]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/download-artifact@v4
+        with:
+          name: tawil-audio-capture-windows-x64
+          path: bin
+      - run: python -m pip install -e ".[desktop]"
+      - name: Build portable application
+        shell: pwsh
+        run: >-
+          pyinstaller --noconfirm --clean --windowed --onedir
+          --name TawilTranslate
+          --collect-all silero_vad
+          --collect-all onnxruntime
+          --collect-all faster_whisper
+          --add-data "configs/default_config.json;configs"
+          --add-data "configs/glossary.example.json;configs"
+          --add-binary "bin/tawil-audio-capture.exe;bin"
+          main.py
+      - name: Create portable archive
+        shell: pwsh
+        run: Compress-Archive -Path dist/TawilTranslate/* -DestinationPath tawil-translate-windows-x64.zip
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: tawil-translate-windows-x64.zip

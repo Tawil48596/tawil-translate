@@ -27,6 +27,14 @@ class STTConfig:
 
 
 @dataclass(slots=True)
+class VADConfig:
+    provider: str = "silero"
+    threshold: float = 0.5
+    min_silence_ms: int = 280
+    min_speech_ms: int = 180
+
+
+@dataclass(slots=True)
 class TranslationConfig:
     provider: str = "openai-compatible"
     base_url: str = "https://api.openai.com/v1"
@@ -57,6 +65,7 @@ class OverlayConfig:
 @dataclass(slots=True)
 class AppConfig:
     audio: AudioConfig = field(default_factory=AudioConfig)
+    vad: VADConfig = field(default_factory=VADConfig)
     stt: STTConfig = field(default_factory=STTConfig)
     translation: TranslationConfig = field(default_factory=TranslationConfig)
     pipeline: PipelineConfig = field(default_factory=PipelineConfig)
@@ -69,6 +78,7 @@ class AppConfig:
         raw: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
         return cls(
             audio=AudioConfig(**raw.get("audio", {})),
+            vad=VADConfig(**raw.get("vad", {})),
             stt=STTConfig(**raw.get("stt", {})),
             translation=TranslationConfig(**raw.get("translation", {})),
             pipeline=PipelineConfig(**raw.get("pipeline", {})),

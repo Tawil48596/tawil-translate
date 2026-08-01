@@ -6,6 +6,12 @@
     "frame_ms": 20,
     "helper_path": "bin/tawil-audio-capture.exe"
   },
+  "vad": {
+    "provider": "silero",
+    "threshold": 0.5,
+    "min_silence_ms": 280,
+    "min_speech_ms": 180
+  },
   "stt": {
     "profile": "balanced",
     "model": null,

@@ -2,7 +2,7 @@
 
 面向 Windows 游戏与直播的低延迟、进程级实时翻译悬浮窗。
 
-> 当前阶段：统一程序、可运行模拟管线、Faster-Whisper 与 OpenAI-compatible 适配器、桌面设置和悬浮窗。进程级 WASAPI 捕获仍在下一阶段。
+> 当前阶段：统一桌面程序已贯通进程级 WASAPI、Silero VAD、Faster-Whisper、OpenAI-compatible 流式翻译与透明悬浮窗，并提供免 Python 的 Windows 发布包。
 
 ## 设计目标
 
@@ -82,7 +82,9 @@ python main.py --desktop
 
 Python 与 helper 使用带长度帧的二进制 stdout 协议；诊断走 stderr。这样 COM/WASAPI 位于独立进程中，Qt 主线程不会参与音频回调。协议见 `native/audio_capture/README.md`。
 
-当前仓库已完成 Python 桥接和构建入口，原生 helper 的 C++ 实现仍需基于 Microsoft ApplicationLoopback 示例落地。在 helper 尚未生成时，程序会显示明确错误而不是捕获错误的音源。
+原生 helper 现已包含在仓库并由 Windows CI 编译。发布包会把 helper 与 PyInstaller 桌面程序一起交付；用户运行 `scripts/install.bat` 即可安装，不需要预装 Python。首次选择 STT 档位并启动时，程序自动下载相应 Faster-Whisper 模型，并显示加载进度状态。
+
+API Key 优先读取环境变量；也可以在设置窗口输入，密钥通过 Windows Credential Manager 保存，不会写入 JSON 配置或 Git 仓库。
 
 ## 目录
 

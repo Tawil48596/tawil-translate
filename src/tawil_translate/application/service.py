@@ -5,9 +5,11 @@ from pathlib import Path
 
 from tawil_translate.domain.config import AppConfig
 from tawil_translate.domain.ports import EventHandler
-from tawil_translate.infrastructure.energy_vad import EnergyVAD
 from tawil_translate.infrastructure.openai_translator import OpenAICompatibleTranslator
 from tawil_translate.infrastructure.process_loopback import ProcessLoopbackSource
+from tawil_translate.infrastructure.secrets import get_api_key
+from tawil_translate.infrastructure.silero_vad import SileroVAD
+from tawil_translate.paths import resource_root
 
 from .budget import DailyTokenBudget
 from .chunking import SmartChunker
@@ -15,7 +17,8 @@ from .pipeline import TranslationPipeline
 from .runtime import build_stt
 
 
-def build_pipeline(config: AppConfig, emit: EventHandler, root: Path) -> TranslationPipeline:
+def build_pipeline(config: AppConfig, emit: EventHandler, root: Path | None = None) -> TranslationPipeline:
+    root = root or resource_root()
     if not config.audio.target_pid:
         raise ValueError("select a target process before starting")
     glossary_path = root / "configs" / "glossary.json"
@@ -28,13 +31,17 @@ def build_pipeline(config: AppConfig, emit: EventHandler, root: Path) -> Transla
     translator = OpenAICompatibleTranslator(
         base_url=config.translation.base_url,
         model=config.translation.model,
-        api_key=config.api_key,
+        api_key=get_api_key(config.translation.api_key_env),
         target_language=config.translation.target_language,
         timeout_seconds=config.translation.timeout_seconds,
     )
     return TranslationPipeline(
         audio=audio,
-        vad=EnergyVAD(),
+        vad=SileroVAD(
+            threshold=config.vad.threshold,
+            silence_ms=config.vad.min_silence_ms,
+            min_speech_ms=config.vad.min_speech_ms,
+        ),
         stt=build_stt(config.stt),
         translator=translator,
         emit=emit,

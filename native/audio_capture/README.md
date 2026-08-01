@@ -23,4 +23,5 @@ tawil-audio-capture.exe --pid 1234 --include-tree --frame-ms 20
 
 This contract keeps COM/WASAPI out of Python and lets capture run at native
 priority without blocking Qt or asyncio. The implementation targets Windows
-10 build 20348 or later and is based on Microsoft's ApplicationLoopback sample.
+10 build 20348 or later and follows Microsoft's ApplicationLoopback sample. It
+requests PCM16 mono at 16 kHz and emits fixed-duration frames.
