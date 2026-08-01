@@ -9,4 +9,4 @@ build/
 *.spec
 configs/user_config.json
 models/
-
+work/

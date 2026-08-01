@@ -6,20 +6,74 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
 
+from tawil_translate.application.model_catalog import get_profile
+from tawil_translate.application.model_manager import LocalModelManager
 from tawil_translate.application.service import build_pipeline
 from tawil_translate.domain.config import AppConfig
 from tawil_translate.domain.models import HealthEvent, MetricEvent, SubtitleEvent
+from tawil_translate.infrastructure.secrets import get_api_key
 
 
 class DesktopController(QObject):
     status_changed = Signal(str, str)
     running_changed = Signal(bool)
+    api_models_ready = Signal(object)
+    api_check_failed = Signal(str)
+    model_download_finished = Signal(str)
+    model_download_failed = Signal(str)
 
     def __init__(self, config_path: Path, overlay) -> None:
         super().__init__()
         self.config_path = config_path
         self.overlay = overlay
         self._task: asyncio.Task | None = None
+        self._operation: asyncio.Task | None = None
+
+    def check_api(self) -> None:
+        self._start_operation(self._check_api())
+
+    def download_model(self, profile_id: str) -> None:
+        self._start_operation(self._download_model(profile_id))
+
+    def _start_operation(self, coroutine) -> None:
+        if self._operation and not self._operation.done():
+            return
+        self._operation = asyncio.create_task(coroutine)
+
+    async def _check_api(self) -> None:
+        try:
+            import httpx
+
+            config = AppConfig.load(self.config_path)
+            api_key = get_api_key(config.translation.api_key_env)
+            if not api_key:
+                raise ValueError("请先输入并保存 API Key")
+            headers = {"Authorization": f"Bearer {api_key}"}
+            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=4.0)) as client:
+                response = await client.get(
+                    f"{config.translation.base_url.rstrip('/')}/models", headers=headers
+                )
+                response.raise_for_status()
+                payload = response.json()
+            models = sorted(
+                item["id"] for item in payload.get("data", []) if isinstance(item, dict) and item.get("id")
+            )
+            if not models:
+                raise RuntimeError("连接成功，但接口没有返回可用模型")
+            self.api_models_ready.emit(models)
+        except Exception as exc:  # noqa: BLE001 - shown as an inline UI error
+            self.api_check_failed.emit(str(exc))
+
+    async def _download_model(self, profile_id: str) -> None:
+        try:
+            config = AppConfig.load(self.config_path)
+            profile = get_profile(profile_id)
+            self.status_changed.emit("working", f"正在下载 {profile.label} 模型")
+            await LocalModelManager(Path(config.stt.model_dir)).download(profile)
+            self.model_download_finished.emit(profile_id)
+            self.status_changed.emit("idle", "本地语音模型已就绪")
+        except Exception as exc:  # noqa: BLE001 - shown as an inline UI error
+            self.model_download_failed.emit(str(exc))
 
     def start(self) -> None:
         if self._task and not self._task.done():

@@ -12,13 +12,23 @@ class STTProfile:
     compute_type: str
     approximate_vram_gb: float
     use_case: str
+    approximate_download_gb: float = 0.0
 
 
 PROFILES: tuple[STTProfile, ...] = (
-    STTProfile("cpu", "CPU / 兼容", "base", "cpu", "int8", 0.0, "无独立显卡、低功耗设备"),
-    STTProfile("fast", "极速", "small", "cuda", "int8_float16", 1.2, "动作游戏、最低延迟"),
-    STTProfile("balanced", "均衡（推荐）", "medium", "cuda", "float16", 2.8, "大多数游戏和直播"),
-    STTProfile("accurate", "高精度", "large-v3-turbo", "cuda", "float16", 5.5, "剧情游戏、多口音内容"),
+    STTProfile("cpu", "CPU / 兼容", "base", "cpu", "int8", 0.0, "无独立显卡、低功耗设备", 0.15),
+    STTProfile("fast", "极速", "small", "cuda", "int8_float16", 1.2, "动作游戏、最低延迟", 0.5),
+    STTProfile("balanced", "均衡（推荐）", "medium", "cuda", "float16", 2.8, "大多数游戏和直播", 1.5),
+    STTProfile(
+        "accurate",
+        "高精度",
+        "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
+        "cuda",
+        "float16",
+        5.5,
+        "剧情游戏、多口音内容",
+        1.6,
+    ),
 )
 
 
