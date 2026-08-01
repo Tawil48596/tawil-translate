@@ -1,6 +1,13 @@
 {
   "audio": {"target_pid": null, "sample_rate": 16000},
-  "stt": {"provider": "faster-whisper", "model": "small", "device": "cuda"},
+  "stt": {
+    "profile": "balanced",
+    "model": null,
+    "device": "auto",
+    "compute_type": "auto",
+    "source_language": null,
+    "model_dir": "models"
+  },
   "translation": {
     "provider": "openai-compatible",
     "base_url": "https://api.openai.com/v1",
@@ -9,6 +16,11 @@
     "daily_token_limit": 100000
   },
   "overlay": {"opacity": 0.86, "click_through": true, "hotkey": "Ctrl+Shift+T"},
-  "pipeline": {"queue_size": 8, "context_size": 6}
+  "pipeline": {
+    "queue_size": 6,
+    "context_size": 6,
+    "overflow_policy": "drop_oldest",
+    "max_segment_seconds": 8.0,
+    "merge_gap_ms": 260
+  }
 }
-

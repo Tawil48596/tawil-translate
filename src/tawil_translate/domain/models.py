@@ -10,6 +10,7 @@ class HealthState(StrEnum):
     LISTENING = "listening"
     WORKING = "working"
     ERROR = "error"
+    DEGRADED = "degraded"
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,6 +47,7 @@ class SubtitleEvent:
     source_text: str
     translated_text: str
     is_final: bool
+    latency_ms: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,3 +56,9 @@ class HealthEvent:
     state: HealthState
     detail: str = ""
 
+
+@dataclass(frozen=True, slots=True)
+class MetricEvent:
+    name: str
+    value: float
+    unit: str

@@ -16,7 +16,10 @@ class VoiceActivityDetector(Protocol):
 
 
 class STTEngine(Protocol):
+    async def warmup(self) -> None: ...
     async def transcribe(self, segment: SpeechSegment) -> Transcript: ...
+
+    async def close(self) -> None: ...
 
 
 class Translator(Protocol):
@@ -26,4 +29,3 @@ class Translator(Protocol):
 
 
 EventHandler = Callable[[object], Awaitable[None]]
-

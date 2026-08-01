@@ -2,7 +2,7 @@
 
 面向 Windows 游戏与直播的低延迟、进程级实时翻译悬浮窗。
 
-> 当前阶段：架构骨架与可运行的模拟管线。WASAPI、Faster-Whisper 和真实 LLM 适配器将按接口逐步接入。
+> 当前阶段：统一程序、可运行模拟管线、Faster-Whisper 与 OpenAI-compatible 适配器、桌面设置和悬浮窗。进程级 WASAPI 捕获仍在下一阶段。
 
 ## 设计目标
 
@@ -42,6 +42,7 @@ python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
 python main.py --demo
+python main.py --list-models
 pytest
 ```
 
@@ -49,7 +50,31 @@ pytest
 
 ```powershell
 pip install -e ".[desktop]"
+python main.py --desktop
 ```
+
+## 本地语音识别选项
+
+所有选项都集成在同一个程序中，可在设置窗口切换；模型首次使用时由 Faster-Whisper 下载到 `models/`，后续离线加载。
+
+| 档位 | 模型 / 计算方式 | 资源参考 | 适用场景 |
+|---|---|---:|---|
+| CPU / 兼容 | base / int8 | 无独显 | 兼容性优先、低功耗设备 |
+| 极速 | small / int8_float16 | 约 1.2GB 显存 | 动作游戏、最低延迟 |
+| 均衡（默认） | medium / float16 | 约 2.8GB 显存 | 大多数游戏和直播 |
+| 高精度 | large-v3-turbo / float16 | 约 5.5GB 显存 | 剧情游戏、多口音内容 |
+
+显存数字是近似规划值，实际占用会随驱动、音频长度和 CTranslate2 版本变化。高级配置可以覆盖模型名称、设备与量化类型。
+
+## 模块优化摘要
+
+- 音频：20ms 帧设计；回调线程只复制 PCM；进程捕获接口与 VAD 解耦。
+- VAD/断句：零下载 Energy VAD 降级实现；短碎片合并；最长 8 秒硬上限。
+- STT：模型懒加载、启动预热、单实例后台推理、四档资源配置。
+- 翻译：SSE 增量显示、低温度提示词、词库约束、短上下文、超时和熔断。
+- 管线：有界队列、可选背压策略、默认丢弃最旧片段保护实时性、统一取消。
+- UI：Qt 原生窗口、文字描边、50ms 淡入、编辑/穿透双模式、非阻塞状态事件。
+- 成本与状态：每日 Token 预算、稳定字幕 ID、端到端延迟指标、错误降级事件。
 
 ## 目录
 
@@ -74,4 +99,3 @@ API Key 仅从环境变量读取，不写入配置文件或日志。默认变量
 ## License
 
 MIT
-

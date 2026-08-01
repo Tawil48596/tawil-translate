@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
+from typing import ClassVar
 from uuid import uuid4
 
 from tawil_translate.domain.models import AudioFrame, SpeechSegment, Transcript
@@ -23,12 +24,18 @@ class DemoVAD:
 
 
 class DemoSTT:
+    async def warmup(self) -> None:
+        return None
+
     async def transcribe(self, segment: SpeechSegment) -> Transcript:
         return Transcript(uuid4().hex, segment.audio.decode(), "en")
 
+    async def close(self) -> None:
+        return None
+
 
 class DemoTranslator:
-    _translations = {
+    _translations: ClassVar[dict[str, str]] = {
         "Welcome to the arena": "欢迎来到竞技场",
         "The objective is under attack": "目标正在遭受攻击",
     }
@@ -40,4 +47,3 @@ class DemoTranslator:
         for character in translated:
             await asyncio.sleep(0.005)
             yield character
-
