@@ -4,12 +4,12 @@ import asyncio
 import io
 import wave
 from functools import partial
-from pathlib import Path
 from uuid import uuid4
 
 from tawil_translate.application.model_catalog import STTProfile
 from tawil_translate.application.model_manager import LocalModelManager
 from tawil_translate.domain.models import SpeechSegment, Transcript
+from tawil_translate.paths import model_root
 
 
 class FasterWhisperSTT:
@@ -34,8 +34,9 @@ class FasterWhisperSTT:
             from faster_whisper import WhisperModel
         except ImportError as exc:
             raise RuntimeError('install desktop dependencies: pip install -e ".[desktop]"') from exc
-        model_path = LocalModelManager(Path(self.model_dir)).path_for(self.profile)
-        if not LocalModelManager(Path(self.model_dir)).is_downloaded(self.profile):
+        manager = LocalModelManager(model_root(self.model_dir))
+        model_path = manager.path_for(self.profile)
+        if not manager.is_downloaded(self.profile):
             raise RuntimeError("selected STT model is not downloaded; download it in Settings first")
         self._model = WhisperModel(
             str(model_path),

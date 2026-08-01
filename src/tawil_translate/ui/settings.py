@@ -25,6 +25,7 @@ from tawil_translate.domain.config import AppConfig
 from tawil_translate.infrastructure.hardware import detect_cuda_vram_gb
 from tawil_translate.infrastructure.processes import find_remembered_process, list_processes
 from tawil_translate.infrastructure.secrets import get_api_key, set_api_key
+from tawil_translate.paths import model_root
 
 STYLE = """
 QWidget { background: #090d14; color: #d9e2f1; font-family: "Microsoft YaHei UI"; font-size: 13px; }
@@ -276,13 +277,17 @@ class SettingsWindow(QMainWindow):
             return
         profile = PROFILES[self.profile.currentIndex()]
         self.config.stt.profile = profile.id
-        manager = LocalModelManager(Path(self.config.stt.model_dir))
+        manager = LocalModelManager(model_root(self.config.stt.model_dir))
         self._model_ready = manager.is_downloaded(profile)
         self.profile_detail.setText(
             f"{profile.use_case} · 下载约 {profile.approximate_download_gb:.2f}GB · "
             f"{profile.compute_type}"
         )
-        self.model_state.setText("模型已下载，可直接使用" if self._model_ready else "尚未下载")
+        location = manager.path_for(profile)
+        self.model_state.setText(
+            f"模型已下载 · {location}" if self._model_ready else f"尚未下载 · 将保存到 {location}"
+        )
+        self.model_state.setToolTip(str(location))
         self.model_state.setObjectName("success" if self._model_ready else "hint")
         self.model_state.style().polish(self.model_state)
         self.download_button.setText("重新下载" if self._model_ready else "下载所选模型")
