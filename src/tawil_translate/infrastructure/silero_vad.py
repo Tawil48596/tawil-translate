@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+from math import isqrt
 
 from tawil_translate.domain.models import AudioFrame, SpeechSegment
 
@@ -16,7 +17,7 @@ class SileroVAD:
     silence_ms: int = 280
     min_speech_ms: int = 180
     sample_rate: int = 16_000
-    max_speech_ms: int = 8_000
+    max_speech_ms: int = 3_000
     _model: object | None = None
     _input: bytearray = field(default_factory=bytearray)
     _speech: bytearray = field(default_factory=bytearray)
@@ -25,6 +26,8 @@ class SileroVAD:
     _started_at: float = 0.0
     _last_at: float = 0.0
     _fallback: EnergyVAD = field(default_factory=EnergyVAD)
+    _raw_frames: list[AudioFrame] = field(default_factory=list)
+    _raw_voiced: bool = False
 
     def __post_init__(self) -> None:
         self._fallback.silence_ms = self.silence_ms
@@ -47,6 +50,10 @@ class SileroVAD:
         if frame.sample_rate != self.sample_rate or frame.channels != 1:
             raise ValueError("Silero VAD requires mono 16 kHz PCM")
         await self.warmup()
+        self._raw_frames.append(frame)
+        samples = memoryview(frame.pcm).cast("h")
+        rms = isqrt(sum(sample * sample for sample in samples) // max(1, len(samples)))
+        self._raw_voiced = self._raw_voiced or rms >= self._fallback.threshold
         fallback_output = await self._fallback.feed(frame)
         self._input.extend(frame.pcm)
         self._last_at = frame.captured_at
@@ -71,7 +78,16 @@ class SileroVAD:
                 self._silent_ms += duration_ms
                 if self._silent_ms >= self.silence_ms:
                     output.extend(self._finish())
-        return output or (fallback_output if not self._active else [])
+        committed = output or (fallback_output if not self._active else [])
+        if committed:
+            self._reset_raw()
+            return committed
+        raw_duration_ms = sum(
+            len(item.pcm) / 2 / item.sample_rate * 1000 for item in self._raw_frames
+        )
+        if raw_duration_ms >= self.max_speech_ms:
+            return self._commit_raw()
+        return []
 
     def _probability(self, pcm: bytes) -> float:
         import torch
@@ -95,3 +111,28 @@ class SileroVAD:
         if duration_ms < self.min_speech_ms:
             return []
         return [SpeechSegment(audio, self.sample_rate, self._started_at, self._last_at)]
+
+    def _commit_raw(self) -> list[SpeechSegment]:
+        frames = self._raw_frames
+        voiced = self._raw_voiced
+        self._reset_raw()
+        self._input.clear()
+        self._speech.clear()
+        self._active = False
+        self._silent_ms = 0
+        self._fallback.reset()
+        if not frames or not voiced:
+            return []
+        end = frames[-1].captured_at + len(frames[-1].pcm) / 2 / frames[-1].sample_rate
+        return [
+            SpeechSegment(
+                b"".join(item.pcm for item in frames),
+                frames[0].sample_rate,
+                frames[0].captured_at,
+                end,
+            )
+        ]
+
+    def _reset_raw(self) -> None:
+        self._raw_frames.clear()
+        self._raw_voiced = False

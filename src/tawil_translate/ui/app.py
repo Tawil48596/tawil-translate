@@ -36,6 +36,8 @@ def run_desktop(config_path: Path) -> int:
     hotkey.activated.connect(lambda: overlay.set_edit_mode(not overlay.edit_mode))
     hotkey.register()
     settings.show()
+    screen = app.primaryScreen().availableGeometry()
+    overlay.move(screen.x() + (screen.width() - overlay.width()) // 2, screen.bottom() - 220)
     overlay.show()
     loop = QEventLoop(app)
     asyncio.set_event_loop(loop)

@@ -92,7 +92,10 @@ class SettingsWindow(QMainWindow):
         self.config = AppConfig.load(config_path)
         self.overlay = overlay
         self._running = False
-        self._api_verified = False
+        self._api_verified = bool(
+            self.config.translation.model
+            and get_api_key(self.config.translation.api_key_env)
+        )
         self._model_ready = False
         self.setWindowTitle("Tawil Translate · Control Center")
         self.resize(860, 760)
@@ -158,7 +161,7 @@ class SettingsWindow(QMainWindow):
         self.api_key.setPlaceholderText("已安全保存密钥" if has_key else "输入 API Key")
         layout.addWidget(self._field("API Key · 保存至 Windows 凭据管理器", self.api_key))
         check_row = QHBoxLayout()
-        self.api_state = QLabel("尚未检查")
+        self.api_state = QLabel("使用已保存的连接" if self._api_verified else "尚未检查")
         self.api_state.setObjectName("hint")
         self.check_api_button = QPushButton("保存并检查连接")
         self.check_api_button.clicked.connect(self._save_and_check_api)
