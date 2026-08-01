@@ -76,6 +76,14 @@ python main.py --desktop
 - UI：Qt 原生窗口、文字描边、50ms 淡入、编辑/穿透双模式、非阻塞状态事件。
 - 成本与状态：每日 Token 预算、稳定字幕 ID、端到端延迟指标、错误降级事件。
 
+## 进程级音频捕获
+
+桌面程序会列出并记忆目标游戏/直播进程。捕获层只接受原生 helper 输出的目标进程树 PCM，不会静默回退到全系统混音。系统要求 Windows 10 build 20348 或更高版本。
+
+Python 与 helper 使用带长度帧的二进制 stdout 协议；诊断走 stderr。这样 COM/WASAPI 位于独立进程中，Qt 主线程不会参与音频回调。协议见 `native/audio_capture/README.md`。
+
+当前仓库已完成 Python 桥接和构建入口，原生 helper 的 C++ 实现仍需基于 Microsoft ApplicationLoopback 示例落地。在 helper 尚未生成时，程序会显示明确错误而不是捕获错误的音源。
+
 ## 目录
 
 ```text

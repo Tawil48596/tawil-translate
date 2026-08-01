@@ -18,10 +18,14 @@ from PySide6.QtWidgets import (
 
 from tawil_translate.application.model_catalog import PROFILES
 from tawil_translate.domain.config import AppConfig
+from tawil_translate.infrastructure.processes import find_remembered_process, list_processes
 
 
 class SettingsWindow(QMainWindow):
     mode_changed = Signal(bool)
+
+    start_requested = Signal()
+    stop_requested = Signal()
 
     def __init__(self, config_path: Path, overlay) -> None:
         super().__init__()
@@ -44,6 +48,13 @@ class SettingsWindow(QMainWindow):
         self.profile_detail = QLabel()
         self.profile.currentIndexChanged.connect(self._update_detail)
         form.addRow("适用场景", self.profile_detail)
+        process_row = QHBoxLayout()
+        self.process = QComboBox()
+        refresh = QPushButton("刷新")
+        refresh.clicked.connect(self._refresh_processes)
+        process_row.addWidget(self.process, 1)
+        process_row.addWidget(refresh)
+        form.addRow("目标游戏 / 直播", process_row)
         self.opacity = QSlider()
         self.opacity.setOrientation(__import__("PySide6.QtCore", fromlist=["Qt"]).Qt.Horizontal)
         self.opacity.setRange(30, 100)
@@ -59,12 +70,17 @@ class SettingsWindow(QMainWindow):
         preview.clicked.connect(self.overlay.show)
         save = QPushButton("保存设置")
         save.clicked.connect(self._save)
+        self.start_stop = QPushButton("开始翻译")
+        self.start_stop.clicked.connect(self._toggle_running)
         buttons.addWidget(preview)
         buttons.addStretch()
         buttons.addWidget(save)
+        buttons.addWidget(self.start_stop)
         layout.addLayout(buttons)
         self.setCentralWidget(root)
         self._update_detail()
+        self._refresh_processes()
+        self._running = False
 
     def _update_detail(self) -> None:
         profile = PROFILES[self.profile.currentIndex()]
@@ -74,6 +90,46 @@ class SettingsWindow(QMainWindow):
         self.config.stt.profile = self.profile.currentData()
         self.config.overlay.opacity = self.opacity.value() / 100
         self.config.overlay.click_through = self.click_through.isChecked()
+        selected = self.process.currentData()
+        if selected:
+            self.config.audio.target_pid = selected.pid
+            self.config.audio.target_executable = selected.name
         self.config.save(self.config_path)
         self.overlay.set_edit_mode(not self.config.overlay.click_through)
         self.statusBar().showMessage("设置已保存；模型将在下次启动时加载", 3500)
+
+    def _refresh_processes(self) -> None:
+        self.process.clear()
+        try:
+            processes = list_processes()
+        except (OSError, RuntimeError) as exc:
+            self.statusBar().showMessage(f"无法读取进程：{exc}")
+            return
+        remembered = find_remembered_process(
+            processes, self.config.audio.target_pid, self.config.audio.target_executable
+        )
+        selected_index = 0
+        for index, process in enumerate(processes):
+            self.process.addItem(process.label, process)
+            if process.pid == remembered:
+                selected_index = index
+        self.process.setCurrentIndex(selected_index)
+
+    def _toggle_running(self) -> None:
+        if self._running:
+            self.stop_requested.emit()
+        else:
+            self._save()
+            self.start_requested.emit()
+
+    def set_running(self, running: bool) -> None:
+        self._running = running
+        self.start_stop.setText("停止翻译" if running else "开始翻译")
+        self.profile.setEnabled(not running)
+        self.process.setEnabled(not running)
+
+    def set_status(self, state: str, detail: str) -> None:
+        colors = {"listening": "#3ddc84", "working": "#4ba3ff", "error": "#ff5d62", "degraded": "#ffb020"}
+        color = colors.get(state, "#89909f")
+        self.statusBar().setStyleSheet(f"color: {color}")
+        self.statusBar().showMessage(detail or state)

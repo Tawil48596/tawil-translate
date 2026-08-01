@@ -10,8 +10,10 @@ from typing import Any
 @dataclass(slots=True)
 class AudioConfig:
     target_pid: int | None = None
+    target_executable: str | None = None
     sample_rate: int = 16_000
     frame_ms: int = 20
+    helper_path: str = "bin/tawil-audio-capture.exe"
 
 
 @dataclass(slots=True)

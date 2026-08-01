@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import audioop
 from dataclasses import dataclass, field
+from math import isqrt
 
 from tawil_translate.domain.models import AudioFrame, SpeechSegment
 
@@ -18,7 +18,9 @@ class EnergyVAD:
 
     async def feed(self, frame: AudioFrame) -> list[SpeechSegment]:
         duration_ms = max(1, round(len(frame.pcm) / 2 / frame.sample_rate * 1000))
-        voiced = audioop.rms(frame.pcm, 2) >= self.threshold
+        samples = memoryview(frame.pcm).cast("h")
+        rms = isqrt(sum(sample * sample for sample in samples) // max(1, len(samples)))
+        voiced = rms >= self.threshold
         if voiced:
             self._frames.append(frame)
             self._silent_ms = 0

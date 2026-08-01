@@ -1,5 +1,11 @@
 {
-  "audio": {"target_pid": null, "sample_rate": 16000},
+  "audio": {
+    "target_pid": null,
+    "target_executable": null,
+    "sample_rate": 16000,
+    "frame_ms": 20,
+    "helper_path": "bin/tawil-audio-capture.exe"
+  },
   "stt": {
     "profile": "balanced",
     "model": null,

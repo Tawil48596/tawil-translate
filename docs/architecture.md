@@ -40,3 +40,9 @@
 ## 统一程序组合
 
 `bootstrap.py` 是唯一入口。`--desktop` 启动设置与悬浮窗，`--list-models` 展示模型档位，`--profile` 可脚本化切换，`--demo` 用于无模型诊断。桌面设置保存到被 Git 忽略的 `configs/user_config.json`，API Key 仍只从环境变量读取。
+
+## Native capture boundary
+
+Process loopback requires Windows build 20348+ and `ActivateAudioInterfaceAsync` with the virtual process-loopback device. A small x64 native helper owns COM and WASAPI, includes the selected PID's process tree, and sends framed PCM16 to Python. The helper never writes logs to stdout. Python validates magic, frame length, sample rate and exit status before admitting frames to VAD.
+
+This boundary is intentional: implementing the completion-handler COM object through `ctypes` would make lifetime and callback failures capable of taking down the UI process. An isolated helper is easier to package, test and restart.
