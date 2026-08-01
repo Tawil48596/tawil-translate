@@ -33,9 +33,22 @@ jobs:
           name: tawil-audio-capture-windows-x64
           path: native/audio_capture/build/Release/tawil-audio-capture.exe
 
+  ui:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e . PySide6 keyring
+      - run: python scripts/ui_smoke.py
+        env:
+          QT_QPA_PLATFORM: offscreen
+
   package:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [python, native]
+    needs: [python, native, ui]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
