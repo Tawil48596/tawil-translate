@@ -335,6 +335,10 @@ class SettingsWindow(QMainWindow):
             processes = list_processes()
         except (OSError, RuntimeError) as exc:
             self.statusBar().showMessage(f"无法读取进程：{exc}")
+            self.process_state.setText(f"无法读取音频进程 · {exc}")
+            self.process_state.setObjectName("error")
+            self.process_state.style().polish(self.process_state)
+            self._refresh_start_state()
             return
         remembered = find_remembered_process(
             processes, self.config.audio.target_pid, self.config.audio.target_executable

@@ -18,13 +18,18 @@ class ProcessInfo:
 def list_processes() -> list[ProcessInfo]:
     """Return only processes with an active Windows render-audio session."""
     try:
+        import comtypes
         from pycaw.constants import AudioSessionState
         from pycaw.pycaw import AudioUtilities
     except ImportError as exc:
         raise RuntimeError("pycaw is required to discover audio processes") from exc
 
     active_state = AudioSessionState.Active.value
-    return _active_processes(AudioUtilities.GetAllSessions(), active_state)
+    try:
+        sessions = AudioUtilities.GetAllSessions()
+    except (OSError, comtypes.COMError) as exc:
+        raise RuntimeError("Windows 当前没有可用的音频输出设备") from exc
+    return _active_processes(sessions, active_state)
 
 
 def _active_processes(sessions, active_state: int = 1) -> list[ProcessInfo]:
