@@ -84,7 +84,8 @@ class AppConfig:
     def load(cls, path: Path) -> AppConfig:
         if not path.exists():
             return cls()
-        raw: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+        # Accept settings written by Windows tools that add a UTF-8 BOM.
+        raw: dict[str, Any] = json.loads(path.read_text(encoding="utf-8-sig"))
         config = cls(
             audio=AudioConfig(**raw.get("audio", {})),
             vad=VADConfig(**raw.get("vad", {})),

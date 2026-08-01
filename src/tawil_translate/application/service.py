@@ -44,7 +44,7 @@ def build_pipeline(config: AppConfig, emit: EventHandler, root: Path | None = No
             threshold=config.vad.threshold,
             silence_ms=config.vad.min_silence_ms,
             min_speech_ms=config.vad.min_speech_ms,
-            max_speech_ms=min(round(config.pipeline.max_segment_seconds * 1000), 3_000),
+            max_speech_ms=min(round(config.pipeline.max_segment_seconds * 1000), 3_500),
         ),
         stt=build_stt(config.stt),
         translator=translator,

@@ -17,7 +17,7 @@ class SileroVAD:
     silence_ms: int = 280
     min_speech_ms: int = 180
     sample_rate: int = 16_000
-    max_speech_ms: int = 3_000
+    max_speech_ms: int = 3_500
     _model: object | None = None
     _input: bytearray = field(default_factory=bytearray)
     _speech: bytearray = field(default_factory=bytearray)

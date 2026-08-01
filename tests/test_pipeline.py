@@ -18,9 +18,11 @@ async def test_pipeline_emits_two_locked_subtitles() -> None:
         queue_size=1,
     )
     await pipeline.run()
+    captions = [event for event in events if isinstance(event, SubtitleEvent)]
     finals = [event for event in events if isinstance(event, SubtitleEvent) and event.is_final]
     assert [event.translated_text for event in finals] == ["欢迎来到竞技场", "目标正在遭受攻击"]
     assert len({event.utterance_id for event in finals}) == 2
+    assert all(event.translated_text for event in captions)
 
 
 async def test_pipeline_emits_source_captions_when_translation_is_disabled() -> None:

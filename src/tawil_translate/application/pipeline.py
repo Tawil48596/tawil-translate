@@ -61,8 +61,6 @@ class TranslationPipeline:
         self.context: deque[str] = deque(maxlen=context_size)
         self.chunker = chunker
         self.circuit_breaker = circuit_breaker or CircuitBreaker()
-        self._translation_tasks: set[asyncio.Task[None]] = set()
-        self._translation_slots = asyncio.Semaphore(2)
 
     async def run(self) -> None:
         await self.emit(HealthEvent("vad", HealthState.WORKING, "正在加载语音活动检测…"))
@@ -72,23 +70,14 @@ class TranslationPipeline:
         await self.emit(HealthEvent("stt", HealthState.IDLE, "model ready"))
         capture = asyncio.create_task(self._capture(), name="audio-capture")
         recognize = asyncio.create_task(self._recognize(), name="stt-translate")
-        cancelled = False
         try:
             await asyncio.gather(capture, recognize)
-        except asyncio.CancelledError:
-            cancelled = True
-            raise
         finally:
             for task in (capture, recognize):
                 task.cancel()
             for task in (capture, recognize):
                 with suppress(asyncio.CancelledError):
                     await task
-            if cancelled:
-                for task in tuple(self._translation_tasks):
-                    task.cancel()
-            if self._translation_tasks:
-                await asyncio.gather(*self._translation_tasks, return_exceptions=True)
             await self.stt.close()
 
     async def _capture(self) -> None:
@@ -131,13 +120,11 @@ class TranslationPipeline:
                 if not transcript.text.strip():
                     continue
                 utterance_id = transcript.utterance_id or uuid4().hex
-                await self.emit(
-                    SubtitleEvent(utterance_id, transcript.text, "", is_final=False)
-                )
                 context = tuple(self.context)
-                self.context.append(transcript.text)
                 if not self.translation_enabled or self.translator is None:
+                    await self.emit(SubtitleEvent(utterance_id, transcript.text, "", is_final=False))
                     latency_ms = round((monotonic() - started) * 1000)
+                    self.context.append(transcript.text)
                     await self.emit(
                         SubtitleEvent(
                             utterance_id,
@@ -149,9 +136,28 @@ class TranslationPipeline:
                     )
                     await self.emit(MetricEvent("caption_latency", latency_ms, "ms"))
                     continue
-                self._schedule_translation(
-                    transcript.text, utterance_id, context=context, started=started
+                self.budget.reserve(self.budget.estimate(transcript.text))
+                self.circuit_breaker.before_call()
+                rendered = ""
+                assert self.translator is not None
+                async for delta in self.translator.translate(
+                    transcript.text, context=context, glossary=self.glossary
+                ):
+                    rendered += delta
+                    # The source and its matching translation first appear
+                    # together, then the Chinese text continues streaming.
+                    await self.emit(
+                        SubtitleEvent(utterance_id, transcript.text, rendered, is_final=False)
+                    )
+                self.circuit_breaker.success()
+                self.context.append(transcript.text)
+                latency_ms = round((monotonic() - started) * 1000)
+                await self.emit(
+                    SubtitleEvent(
+                        utterance_id, transcript.text, rendered, is_final=True, latency_ms=latency_ms
+                    )
                 )
+                await self.emit(MetricEvent("end_to_end_latency", latency_ms, "ms"))
             except BudgetExceeded as exc:
                 await self.emit(HealthEvent("translator", HealthState.ERROR, str(exc)))
                 return
@@ -163,51 +169,3 @@ class TranslationPipeline:
                 await self.emit(HealthEvent("pipeline", HealthState.ERROR, str(exc)))
             finally:
                 self.segments.task_done()
-
-    def _schedule_translation(
-        self, text: str, utterance_id: str, *, context: tuple[str, ...], started: float
-    ) -> None:
-        for task in tuple(self._translation_tasks):
-            if task.done():
-                self._translation_tasks.discard(task)
-        # Keep at most two live requests. Under sustained API slowness, stale
-        # translation is cancelled so it cannot build an ever-growing delay.
-        if len(self._translation_tasks) >= 2:
-            oldest = min(self._translation_tasks, key=lambda task: task.get_name())
-            oldest.cancel()
-        task = asyncio.create_task(
-            self._translate_one(text, utterance_id, context=context, started=started),
-            name=f"translate-{monotonic():020.6f}",
-        )
-        self._translation_tasks.add(task)
-        task.add_done_callback(self._translation_tasks.discard)
-
-    async def _translate_one(
-        self, text: str, utterance_id: str, *, context: tuple[str, ...], started: float
-    ) -> None:
-        try:
-            async with self._translation_slots:
-                self.budget.reserve(self.budget.estimate(text))
-                self.circuit_breaker.before_call()
-                rendered = ""
-                assert self.translator is not None
-                async for delta in self.translator.translate(
-                    text, context=context, glossary=self.glossary
-                ):
-                    rendered += delta
-                    await self.emit(SubtitleEvent(utterance_id, text, rendered, is_final=False))
-                self.circuit_breaker.success()
-                latency_ms = round((monotonic() - started) * 1000)
-                await self.emit(
-                    SubtitleEvent(utterance_id, text, rendered, is_final=True, latency_ms=latency_ms)
-                )
-                await self.emit(MetricEvent("end_to_end_latency", latency_ms, "ms"))
-        except asyncio.CancelledError:
-            raise
-        except BudgetExceeded as exc:
-            await self.emit(HealthEvent("translator", HealthState.ERROR, str(exc)))
-        except CircuitOpen as exc:
-            await self.emit(HealthEvent("translator", HealthState.DEGRADED, str(exc)))
-        except Exception as exc:  # noqa: BLE001 - background API boundary
-            self.circuit_breaker.failure()
-            await self.emit(HealthEvent("translator", HealthState.ERROR, str(exc)))
