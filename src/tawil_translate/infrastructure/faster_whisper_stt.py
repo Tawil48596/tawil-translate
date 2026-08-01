@@ -24,6 +24,8 @@ class FasterWhisperSTT:
         self.profile = profile
         self.model_dir = model_dir
         self.language = language
+        self._detected_language: str | None = language
+        self._previous_text = ""
         self._model = None
         self._lock = asyncio.Lock()
 
@@ -68,19 +70,32 @@ class FasterWhisperSTT:
 
     def _transcribe_sync(self, segment: SpeechSegment) -> Transcript:
         audio = _pcm16_wav(segment.audio, segment.sample_rate)
+        beam_size = 5 if self.profile.id == "accurate" else 3
         segments, info = self._model.transcribe(
             audio,
-            language=self.language,
-            beam_size=1,
-            best_of=1,
+            language=self._detected_language,
+            beam_size=beam_size,
+            patience=1.0,
+            initial_prompt=self._previous_text[-240:] or None,
             condition_on_previous_text=False,
             vad_filter=False,
+            temperature=0.0,
+            repetition_penalty=1.05,
+            no_repeat_ngram_size=3,
         )
         text = "".join(item.text for item in segments).strip()
-        return Transcript(uuid4().hex, text, getattr(info, "language", None), committed=True)
+        detected = getattr(info, "language", None)
+        probability = getattr(info, "language_probability", 0.0)
+        if self._detected_language is None and detected and probability >= 0.75:
+            self._detected_language = detected
+        if text:
+            self._previous_text = text
+        return Transcript(uuid4().hex, text, detected, committed=True)
 
     async def close(self) -> None:
         self._model = None
+        self._detected_language = self.language
+        self._previous_text = ""
 
 
 def _pcm16_wav(pcm: bytes, sample_rate: int) -> io.BytesIO:
