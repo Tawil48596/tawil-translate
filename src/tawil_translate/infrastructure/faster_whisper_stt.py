@@ -4,6 +4,7 @@ import asyncio
 import ctypes
 import io
 import os
+import sys
 import wave
 from functools import partial
 from uuid import uuid4
@@ -12,6 +13,8 @@ from tawil_translate.application.model_catalog import STTProfile
 from tawil_translate.application.model_manager import LocalModelManager
 from tawil_translate.domain.models import SpeechSegment, Transcript
 from tawil_translate.paths import model_root
+
+_DLL_DIRECTORY_HANDLES: list[object] = []
 
 
 class FasterWhisperSTT:
@@ -40,25 +43,24 @@ class FasterWhisperSTT:
         model_path = manager.path_for(self.profile)
         if not manager.is_downloaded(self.profile):
             raise RuntimeError("selected STT model is not downloaded; download it in Settings first")
-        use_cuda = self.profile.device == "cuda" and _cuda_runtime_available()
-        try:
-            self._model = WhisperModel(
-                str(model_path),
-                device="cuda" if use_cuda else "cpu",
-                compute_type=self.profile.compute_type if use_cuda else "int8",
-                local_files_only=True,
+        if self.profile.device == "cuda" and not _cuda_runtime_available():
+            raise RuntimeError(
+                "GPU STT requires bundled CUDA 12 cuBLAS/cuDNN; the runtime self-check failed"
             )
-        except Exception:
-            if not use_cuda:
-                raise
-            # Portable builds cannot assume that CUDA and cuDNN runtime DLLs
-            # are installed system-wide. Keep captions functional on CPU.
-            self._model = WhisperModel(
-                str(model_path),
-                device="cpu",
-                compute_type="int8",
-                local_files_only=True,
+        self._model = WhisperModel(
+            str(model_path),
+            device=self.profile.device,
+            compute_type=self.profile.compute_type,
+            local_files_only=True,
+        )
+        if self.profile.device == "cuda":
+            # Force the first CUDA kernels to run during warmup, not on the
+            # first live subtitle where they would cause a visible stall.
+            audio = _pcm16_wav(bytes(16_000), 16_000)
+            segments, _ = self._model.transcribe(
+                audio, language="en", beam_size=1, vad_filter=False
             )
+            list(segments)
 
     async def transcribe(self, segment: SpeechSegment) -> Transcript:
         await self.warmup()
@@ -95,9 +97,22 @@ def _pcm16_wav(pcm: bytes, sample_rate: int) -> io.BytesIO:
 def _cuda_runtime_available() -> bool:
     if os.name != "nt":
         return True
+    _add_bundled_cuda_directories()
     for library in ("cublas64_12.dll", "cudnn64_9.dll"):
         try:
             ctypes.WinDLL(library)
         except OSError:
             return False
     return True
+
+
+def _add_bundled_cuda_directories() -> None:
+    if not hasattr(os, "add_dll_directory"):
+        return
+    root = getattr(sys, "_MEIPASS", None)
+    if not root:
+        return
+    for relative in (("nvidia", "cublas", "bin"), ("nvidia", "cudnn", "bin")):
+        directory = os.path.join(root, *relative)
+        if os.path.isdir(directory):
+            _DLL_DIRECTORY_HANDLES.append(os.add_dll_directory(directory))

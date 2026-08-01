@@ -73,6 +73,8 @@ jobs:
           --collect-all silero_vad
           --collect-all onnxruntime
           --collect-all faster_whisper
+          --collect-binaries nvidia.cublas
+          --collect-binaries nvidia.cudnn
           --add-data "configs/default_config.json;configs"
           --add-data "configs/glossary.example.json;configs"
           --add-binary "bin/tawil-audio-capture.exe;bin"
