@@ -6,6 +6,7 @@ import io
 import os
 import sys
 import wave
+from collections import Counter, deque
 from functools import partial
 from uuid import uuid4
 
@@ -25,6 +26,7 @@ class FasterWhisperSTT:
         self.model_dir = model_dir
         self.language = language
         self._detected_language: str | None = language
+        self._language_votes: deque[str] = deque(maxlen=3)
         self._previous_text = ""
         self._model = None
         self._lock = asyncio.Lock()
@@ -70,7 +72,8 @@ class FasterWhisperSTT:
 
     def _transcribe_sync(self, segment: SpeechSegment) -> Transcript:
         audio = _pcm16_wav(segment.audio, segment.sample_rate)
-        beam_size = 5 if self.profile.id == "accurate" else 3
+        # A small beam is the best latency/quality tradeoff for live captions.
+        beam_size = 2 if self.profile.id == "balanced" else 1
         segments, info = self._model.transcribe(
             audio,
             language=self._detected_language,
@@ -86,8 +89,13 @@ class FasterWhisperSTT:
         text = "".join(item.text for item in segments).strip()
         detected = getattr(info, "language", None)
         probability = getattr(info, "language_probability", 0.0)
-        if self._detected_language is None and detected and probability >= 0.75:
-            self._detected_language = detected
+        if self.language is None and detected and probability >= 0.80:
+            self._language_votes.append(detected)
+            winner, count = Counter(self._language_votes).most_common(1)[0]
+            # Do not permanently lock from one noisy game/music chunk. A later
+            # unanimous window can also recover after the programme changes.
+            if count >= 3:
+                self._detected_language = winner
         if text:
             self._previous_text = text
         return Transcript(uuid4().hex, text, detected, committed=True)
@@ -95,6 +103,7 @@ class FasterWhisperSTT:
     async def close(self) -> None:
         self._model = None
         self._detected_language = self.language
+        self._language_votes.clear()
         self._previous_text = ""
 
 

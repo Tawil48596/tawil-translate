@@ -6,9 +6,11 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-DEFAULT_TRANSLATION_PROMPT = """你是专业的游戏与直播实时字幕翻译器。请将输入内容翻译为{target_language}。
-要求：只输出译文，不解释、不添加前缀；保持人物语气、情绪、数字和格式；结合最近上下文消解指代；专有名词严格遵循词库；听写不完整时优先给出自然、简洁且适合字幕阅读的译文。
-词库约束：{glossary}"""
+DEFAULT_TRANSLATION_PROMPT = """你是实时游戏与直播字幕翻译器。把输入翻译为{target_language}。
+只输出简洁、自然的译文，不解释、不加前缀；保留语气、数字与格式。
+严格使用这些术语：{glossary}"""
+
+_BROKEN_PROMPT_MARKERS = ("浣犳槸", "缈昏瘧", "璇嶅簱")
 
 
 @dataclass(slots=True)
@@ -83,7 +85,7 @@ class AppConfig:
         if not path.exists():
             return cls()
         raw: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
-        return cls(
+        config = cls(
             audio=AudioConfig(**raw.get("audio", {})),
             vad=VADConfig(**raw.get("vad", {})),
             stt=STTConfig(**raw.get("stt", {})),
@@ -91,6 +93,9 @@ class AppConfig:
             pipeline=PipelineConfig(**raw.get("pipeline", {})),
             overlay=OverlayConfig(**raw.get("overlay", {})),
         )
+        if any(marker in config.translation.custom_prompt for marker in _BROKEN_PROMPT_MARKERS):
+            config.translation.custom_prompt = DEFAULT_TRANSLATION_PROMPT
+        return config
 
     def save(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)

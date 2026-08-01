@@ -31,6 +31,7 @@ class DesktopController(QObject):
         self.overlay = overlay
         self._task: asyncio.Task | None = None
         self._operation: asyncio.Task | None = None
+        self._active_utterance_id: str | None = None
 
     def check_api(self) -> None:
         self._start_operation(self._check_api())
@@ -120,7 +121,10 @@ class DesktopController(QObject):
 
     async def emit(self, event: object) -> None:
         if isinstance(event, SubtitleEvent):
-            self.overlay.set_subtitle(event.source_text, event.translated_text)
+            if not event.translated_text and not event.is_final:
+                self._active_utterance_id = event.utterance_id
+            if self._active_utterance_id in {None, event.utterance_id}:
+                self.overlay.set_subtitle(event.source_text, event.translated_text)
             if event.is_final:
                 self.status_changed.emit("listening", f"延迟 {event.latency_ms} ms")
         elif isinstance(event, HealthEvent):
