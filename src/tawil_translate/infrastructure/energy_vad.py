@@ -13,6 +13,7 @@ class EnergyVAD:
     threshold: int = 420
     silence_ms: int = 280
     min_speech_ms: int = 180
+    max_speech_ms: int = 8_000
     _frames: list[AudioFrame] = field(default_factory=list)
     _silent_ms: int = 0
 
@@ -27,6 +28,8 @@ class EnergyVAD:
         if voiced:
             self._frames.append(frame)
             self._silent_ms = 0
+            if self._duration_ms() >= self.max_speech_ms:
+                return self._flush_if_valid()
             return []
         if not self._frames:
             return []
@@ -50,3 +53,10 @@ class EnergyVAD:
         start = frames[0].captured_at
         end = frames[-1].captured_at + len(frames[-1].pcm) / 2 / frames[-1].sample_rate
         return [SpeechSegment(b"".join(item.pcm for item in frames), frames[0].sample_rate, start, end)]
+
+    def reset(self) -> None:
+        self._frames.clear()
+        self._silent_ms = 0
+
+    def _duration_ms(self) -> float:
+        return sum(len(item.pcm) / 2 / item.sample_rate * 1000 for item in self._frames)

@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 
 from tawil_translate.domain.models import AudioFrame, SpeechSegment
 
+from .energy_vad import EnergyVAD
+
 
 @dataclass(slots=True)
 class SileroVAD:
@@ -14,6 +16,7 @@ class SileroVAD:
     silence_ms: int = 280
     min_speech_ms: int = 180
     sample_rate: int = 16_000
+    max_speech_ms: int = 8_000
     _model: object | None = None
     _input: bytearray = field(default_factory=bytearray)
     _speech: bytearray = field(default_factory=bytearray)
@@ -21,6 +24,12 @@ class SileroVAD:
     _silent_ms: int = 0
     _started_at: float = 0.0
     _last_at: float = 0.0
+    _fallback: EnergyVAD = field(default_factory=EnergyVAD)
+
+    def __post_init__(self) -> None:
+        self._fallback.silence_ms = self.silence_ms
+        self._fallback.min_speech_ms = self.min_speech_ms
+        self._fallback.max_speech_ms = self.max_speech_ms
 
     async def warmup(self) -> None:
         if self._model is not None:
@@ -38,6 +47,7 @@ class SileroVAD:
         if frame.sample_rate != self.sample_rate or frame.channels != 1:
             raise ValueError("Silero VAD requires mono 16 kHz PCM")
         await self.warmup()
+        fallback_output = await self._fallback.feed(frame)
         self._input.extend(frame.pcm)
         self._last_at = frame.captured_at
         output: list[SpeechSegment] = []
@@ -51,14 +61,17 @@ class SileroVAD:
                 if not self._active:
                     self._active = True
                     self._started_at = frame.captured_at
+                    self._fallback.reset()
                 self._speech.extend(window)
                 self._silent_ms = 0
+                if len(self._speech) / 2 / self.sample_rate * 1000 >= self.max_speech_ms:
+                    output.extend(self._finish())
             elif self._active:
                 self._speech.extend(window)
                 self._silent_ms += duration_ms
                 if self._silent_ms >= self.silence_ms:
                     output.extend(self._finish())
-        return output
+        return output or (fallback_output if not self._active else [])
 
     def _probability(self, pcm: bytes) -> float:
         import torch
@@ -70,7 +83,8 @@ class SileroVAD:
         if self._active and self._input:
             self._speech.extend(self._input)
         self._input.clear()
-        return self._finish()
+        output = self._finish()
+        return output or await self._fallback.flush()
 
     def _finish(self) -> list[SpeechSegment]:
         duration_ms = len(self._speech) / 2 / self.sample_rate * 1000

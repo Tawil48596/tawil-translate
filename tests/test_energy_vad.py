@@ -16,3 +16,10 @@ async def test_energy_vad_commits_after_tail_silence() -> None:
     segments = await vad.feed(_frame(0, 1.04))
     assert len(segments) == 1
     assert segments[0].sample_rate == 16_000
+
+
+async def test_energy_vad_commits_continuous_audio_at_latency_limit() -> None:
+    vad = EnergyVAD(threshold=400, max_speech_ms=40, min_speech_ms=20)
+    assert await vad.feed(_frame(1000, 1.0)) == []
+    segments = await vad.feed(_frame(1000, 1.02))
+    assert len(segments) == 1
