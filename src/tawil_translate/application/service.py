@@ -42,9 +42,13 @@ def build_pipeline(config: AppConfig, emit: EventHandler, root: Path | None = No
         audio=audio,
         vad=SileroVAD(
             threshold=config.vad.threshold,
-            silence_ms=config.vad.min_silence_ms,
+            silence_ms=max(config.vad.min_silence_ms, 450),
             min_speech_ms=config.vad.min_speech_ms,
-            max_speech_ms=min(round(config.pipeline.max_segment_seconds * 1000), 5_000),
+            max_speech_ms=max(
+                8_000, min(round(config.pipeline.max_segment_seconds * 1000), 12_000)
+            ),
+            preview_interval_ms=config.pipeline.preview_interval_ms,
+            preview_min_speech_ms=config.pipeline.preview_min_speech_ms,
         ),
         stt=build_stt(config.stt),
         translator=translator,
@@ -59,4 +63,7 @@ def build_pipeline(config: AppConfig, emit: EventHandler, root: Path | None = No
             max_seconds=config.pipeline.max_segment_seconds,
         ),
         translation_enabled=config.translation.enabled,
+        translation_concurrency=config.translation.concurrency,
+        first_token_timeout=config.translation.first_token_timeout_seconds,
+        translation_timeout=config.translation.total_timeout_seconds,
     )

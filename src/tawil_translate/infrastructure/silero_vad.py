@@ -12,10 +12,12 @@ class SileroVAD:
     """Streaming Silero ONNX VAD with 32ms inference windows and bounded state."""
 
     threshold: float = 0.5
-    silence_ms: int = 280
-    min_speech_ms: int = 180
+    silence_ms: int = 450
+    min_speech_ms: int = 200
     sample_rate: int = 16_000
-    max_speech_ms: int = 5_000
+    max_speech_ms: int = 12_000
+    preview_interval_ms: int = 1200
+    preview_min_speech_ms: int = 900
     _model: object | None = None
     _input: bytearray = field(default_factory=bytearray)
     _speech: bytearray = field(default_factory=bytearray)
@@ -24,6 +26,7 @@ class SileroVAD:
     _started_at: float = 0.0
     _last_at: float = 0.0
     _preroll: deque[bytes] = field(default_factory=lambda: deque(maxlen=8))
+    _last_preview_ms: float = 0.0
 
     async def warmup(self) -> None:
         if self._model is not None:
@@ -59,8 +62,23 @@ class SileroVAD:
                     self._preroll.clear()
                 self._speech.extend(window)
                 self._silent_ms = 0
-                if len(self._speech) / 2 / self.sample_rate * 1000 >= self.max_speech_ms:
+                speech_ms = len(self._speech) / 2 / self.sample_rate * 1000
+                if speech_ms >= self.max_speech_ms:
                     output.extend(self._finish())
+                elif (
+                    speech_ms >= self.preview_min_speech_ms
+                    and speech_ms - self._last_preview_ms >= self.preview_interval_ms
+                ):
+                    output.append(
+                        SpeechSegment(
+                            bytes(self._speech),
+                            self.sample_rate,
+                            self._started_at,
+                            self._last_at,
+                            committed=False,
+                        )
+                    )
+                    self._last_preview_ms = speech_ms
             elif self._active:
                 self._speech.extend(window)
                 self._silent_ms += duration_ms
@@ -88,6 +106,7 @@ class SileroVAD:
         self._speech.clear()
         self._active = False
         self._silent_ms = 0
+        self._last_preview_ms = 0.0
         if duration_ms < self.min_speech_ms:
             return []
         return [SpeechSegment(audio, self.sample_rate, self._started_at, self._last_at)]

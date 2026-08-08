@@ -9,8 +9,8 @@
   "vad": {
     "provider": "silero",
     "threshold": 0.5,
-    "min_silence_ms": 280,
-    "min_speech_ms": 180
+    "min_silence_ms": 450,
+    "min_speech_ms": 200
   },
   "stt": {
     "profile": "balanced",
@@ -28,14 +28,20 @@
     "model": "gpt-4.1-mini",
     "api_key_env": "TAWIL_API_KEY",
     "daily_token_limit": 100000,
-    "custom_prompt": "你是专业的游戏与直播实时字幕翻译器。请将输入内容翻译为{target_language}。\n要求：只输出译文，不解释、不添加前缀；保持人物语气、情绪、数字和格式；结合最近上下文消解指代；专有名词严格遵循词库；听写不完整时优先给出自然、简洁且适合字幕阅读的译文。\n词库约束：{glossary}"
+    "timeout_seconds": 12.0,
+    "first_token_timeout_seconds": 1.5,
+    "total_timeout_seconds": 3.0,
+    "concurrency": 3,
+    "custom_prompt": "你是实时游戏与直播字幕翻译器。把输入翻译为{target_language}。\n只输出简洁、自然的译文，不解释、不加前缀；保留语气、数字与格式。\n严格使用这些术语：{glossary}"
   },
   "overlay": {"opacity": 0.86, "click_through": true, "hotkey": "Ctrl+Shift+T"},
   "pipeline": {
     "queue_size": 6,
     "context_size": 6,
     "overflow_policy": "drop_oldest",
-    "max_segment_seconds": 8.0,
-    "merge_gap_ms": 260
+    "max_segment_seconds": 12.0,
+    "merge_gap_ms": 260,
+    "preview_interval_ms": 1200,
+    "preview_min_speech_ms": 900
   }
 }
