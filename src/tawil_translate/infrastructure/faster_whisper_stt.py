@@ -29,6 +29,7 @@ class FasterWhisperSTT:
         self._language_votes: deque[str] = deque(maxlen=3)
         self._model = None
         self._lock = asyncio.Lock()
+        self._inference_lock = asyncio.Lock()
 
     async def warmup(self) -> None:
         if self._model is not None:
@@ -67,12 +68,15 @@ class FasterWhisperSTT:
 
     async def transcribe(self, segment: SpeechSegment) -> Transcript:
         await self.warmup()
-        return await asyncio.to_thread(partial(self._transcribe_sync, segment))
+        async with self._inference_lock:
+            return await asyncio.to_thread(partial(self._transcribe_sync, segment))
 
     def _transcribe_sync(self, segment: SpeechSegment) -> Transcript:
         audio = _pcm16_wav(segment.audio, segment.sample_rate)
         # A small beam is the best latency/quality tradeoff for live captions.
-        beam_size = 3 if self.profile.id == "balanced" else 1
+        beam_size = 1 if not segment.committed else {"balanced": 3, "accurate": 5}.get(
+            self.profile.id, 1
+        )
         segments, info = self._model.transcribe(
             audio,
             language=self._detected_language,

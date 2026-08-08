@@ -37,8 +37,8 @@ class STTConfig:
 class VADConfig:
     provider: str = "silero"
     threshold: float = 0.5
-    min_silence_ms: int = 280
-    min_speech_ms: int = 180
+    min_silence_ms: int = 450
+    min_speech_ms: int = 200
 
 
 @dataclass(slots=True)
@@ -51,6 +51,9 @@ class TranslationConfig:
     target_language: str = "zh-CN"
     daily_token_limit: int = 100_000
     timeout_seconds: float = 12.0
+    first_token_timeout_seconds: float = 1.5
+    total_timeout_seconds: float = 3.0
+    concurrency: int = 3
     custom_prompt: str = DEFAULT_TRANSLATION_PROMPT
 
 
@@ -59,8 +62,10 @@ class PipelineConfig:
     queue_size: int = 6
     context_size: int = 6
     overflow_policy: str = "drop_oldest"
-    max_segment_seconds: float = 8.0
+    max_segment_seconds: float = 12.0
     merge_gap_ms: int = 260
+    preview_interval_ms: int = 1200
+    preview_min_speech_ms: int = 900
 
 
 @dataclass(slots=True)
@@ -96,6 +101,22 @@ class AppConfig:
         )
         if any(marker in config.translation.custom_prompt for marker in _BROKEN_PROMPT_MARKERS):
             config.translation.custom_prompt = DEFAULT_TRANSLATION_PROMPT
+        # Migrate the old low-latency tuning that split normal sentences at
+        # 5 seconds and treated brief intra-sentence pauses as sentence ends.
+        if config.vad.min_silence_ms <= 280:
+            config.vad.min_silence_ms = 450
+        config.vad.min_speech_ms = max(config.vad.min_speech_ms, 200)
+        if config.pipeline.max_segment_seconds <= 8:
+            config.pipeline.max_segment_seconds = 12.0
+        if config.translation.concurrency <= 2:
+            config.translation.concurrency = 3
+        if config.translation.first_token_timeout_seconds >= 4:
+            config.translation.first_token_timeout_seconds = 1.5
+        if config.translation.total_timeout_seconds >= 7:
+            config.translation.total_timeout_seconds = 3.0
+        prompt_lines = config.translation.custom_prompt.splitlines()
+        if prompt_lines and '"thinking"' in prompt_lines[0]:
+            config.translation.custom_prompt = "\n".join(prompt_lines[1:]).lstrip()
         return config
 
     def save(self, path: Path) -> None:

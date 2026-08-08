@@ -120,7 +120,12 @@ class DesktopController(QObject):
 
     async def emit(self, event: object) -> None:
         if isinstance(event, SubtitleEvent):
-            self.overlay.set_subtitle(event.source_text, event.translated_text)
+            self.overlay.set_subtitle(
+                event.utterance_id,
+                event.source_text,
+                event.translated_text,
+                event.is_final,
+            )
             if event.is_final:
                 self.status_changed.emit("listening", f"延迟 {event.latency_ms} ms")
         elif isinstance(event, HealthEvent):

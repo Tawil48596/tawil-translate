@@ -31,6 +31,7 @@ class SpeechSegment:
     sample_rate: int
     started_at: float
     ended_at: float
+    committed: bool = True
 
 
 @dataclass(frozen=True, slots=True)

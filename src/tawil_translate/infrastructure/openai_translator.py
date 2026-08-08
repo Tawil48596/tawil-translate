@@ -23,14 +23,23 @@ class OpenAICompatibleTranslator:
         self.target_language = target_language
         self.custom_prompt = custom_prompt
         self.timeout_seconds = timeout_seconds
+        self._client = None
+
+    async def _get_client(self):
+        if self._client is None:
+            try:
+                import httpx
+            except ImportError as exc:
+                raise RuntimeError('install desktop dependencies: pip install -e ".[desktop]"') from exc
+            self._client = httpx.AsyncClient(
+                timeout=httpx.Timeout(self.timeout_seconds, connect=4.0),
+                limits=httpx.Limits(max_connections=4, max_keepalive_connections=4),
+            )
+        return self._client
 
     async def translate(
         self, text: str, *, context: tuple[str, ...], glossary: dict[str, str]
     ) -> AsyncIterator[str]:
-        try:
-            import httpx
-        except ImportError as exc:
-            raise RuntimeError('install desktop dependencies: pip install -e ".[desktop]"') from exc
         glossary_text = ", ".join(f"{source}={target}" for source, target in glossary.items())
         recent = "\n".join(context[-4:])
         system = self.custom_prompt.replace("{target_language}", self.target_language).replace(
@@ -40,12 +49,15 @@ class OpenAICompatibleTranslator:
         payload = {
             "model": self.model,
             "stream": True,
+            "max_tokens": 128,
             "temperature": 0.1,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
         }
+        if "api.deepseek.com" in self.base_url.lower():
+            payload["thinking"] = {"type": "disabled"}
         headers = {"Authorization": f"Bearer {self.api_key}"}
-        timeout = httpx.Timeout(self.timeout_seconds, connect=4.0)
-        async with httpx.AsyncClient(timeout=timeout) as client, client.stream(
+        client = await self._get_client()
+        async with client.stream(
             "POST", f"{self.base_url}/chat/completions", json=payload, headers=headers
         ) as response:
             response.raise_for_status()
@@ -56,3 +68,8 @@ class OpenAICompatibleTranslator:
                 delta = data["choices"][0].get("delta", {}).get("content", "")
                 if delta:
                     yield delta
+
+    async def close(self) -> None:
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
